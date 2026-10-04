@@ -447,6 +447,8 @@ impl App {
                 self.active_project_name = self.projects.get(&pid).map(|p| p.name.clone());
             }
         }
+
+        self.refresh_history(db);
     }
 
     /// Refreshes all historical time entries and cached projects from the database.
@@ -955,7 +957,9 @@ impl App {
                 }
                 KeyCode::Enter => {
                     if let Some(db_ref) = db {
-                        let _ = self.save_entry_form(db_ref);
+                        if let Err(e) = self.save_entry_form(db_ref) {
+                            self.set_status_message(e);
+                        }
                     } else {
                         self.close_modal();
                     }
