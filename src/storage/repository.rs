@@ -898,7 +898,11 @@ impl Repository for Database {
             .unwrap()
             .and_utc();
 
-        let query_start_dt = week_start.min(today).and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let query_start_dt = week_start
+            .min(today)
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
         let query_end_dt = (week_start + Duration::days(7))
             .max(today + Duration::days(1))
             .and_hms_opt(0, 0, 0)
