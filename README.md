@@ -165,6 +165,58 @@ Add `custom/clockify` to your `modules-left`, `modules-center`, or `modules-righ
 
 ---
 
+## 🐚 Omarchy Status Bar (Quickshell) Integration
+
+`chrono-cli` natively integrates with the **Omarchy status bar** (powered by [Quickshell](https://quickshell.outfoxxed.me/)) and the [`mrworld.clock-bar`](https://github.com/mrworld/clock-bar) plugin located at `~/.config/omarchy/plugins/mrworld.clock-bar`.
+
+Instead of spawning slow external Python runtimes with network latency on every poll, `chrono omarchy` commands execute in under **5ms** backed directly by local SQLite storage, while preserving seamless Clockify cloud synchronization and interop with `~/.config/omarchy/clockify.json`.
+
+### Supported Omarchy Subcommands
+
+```bash
+# Snapshot status for Quickshell (all 16 JSON keys: todaySeconds, weekSeconds, running, etc.)
+chrono omarchy status
+
+# Snapshot status including projects list
+chrono omarchy status --projects
+
+# Start a timer from the bar widget or popup
+chrono omarchy start --description "Working on feature" --project "PROJ_ID" --billable
+
+# Stop active timer
+chrono omarchy stop
+
+# Discard active timer without saving
+chrono omarchy discard
+
+# Continue / repeat the most recent completed task
+chrono omarchy continue
+
+# Configure Clockify credentials and defaults
+chrono omarchy set-config --key "API_KEY" --workspace "WORKSPACE_ID" --project "PROJECT_ID"
+chrono omarchy set-key "API_KEY"
+chrono omarchy clear-key
+```
+
+You can also use the aliases `chrono bar ...` or `chrono quickshell ...`, or invoke `chrono status --omarchy`.
+
+### Connecting with `mrworld.clock-bar`
+
+The `mrworld.clock-bar` plugin automatically invokes `chrono omarchy` when `chrono` is installed on your `PATH` or in `~/.local/bin/chrono`.
+
+1. **Install binary to PATH**:
+   ```bash
+   cargo build --release
+   cp target/release/chrono ~/.local/bin/chrono
+   ```
+2. **Reload Omarchy Shell**:
+   ```bash
+   omarchy-shell ipc call mrworld.clock-bar refresh
+   ```
+3. The status bar immediately updates in real-time with zero lag, showing elapsed time, project colors, and today's total focus time.
+
+---
+
 ## ⌨ Complete TUI Keybindings Reference
 
 Press `?` at any point in the TUI to open the built-in cheatsheet modal.

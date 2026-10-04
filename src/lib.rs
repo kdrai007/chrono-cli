@@ -8,7 +8,11 @@ pub mod notify;
 pub mod storage;
 pub mod tui;
 
-pub use cli::{run_cli, Cli, Commands, ExportFormat, ExportRecord, WaybarOutput};
+pub use cli::{
+    run_cli, Cli, Commands, ExportFormat, ExportRecord, OmarchyCommands, OmarchyPayload,
+    OmarchyProjectBreakdown, OmarchyProjectItem, OmarchyRecentTask, OmarchyRunningEntry,
+    OmarchySetConfigPayload, OmarchySettings, WaybarOutput,
+};
 pub use clockify::{
     entry_to_create_request, ClockifyApi, ClockifyClient, ClockifyError, ClockifyProject,
     ClockifyTag, ClockifyUser, ClockifyWorkspace, CreateTimeEntryRequest, SyncEngine, SyncError,
