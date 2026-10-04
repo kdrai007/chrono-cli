@@ -112,7 +112,9 @@ fn render_cards(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    let is_stacked = area.width < 60 || area.height < 10;
+    // Only stack vertically when terminal is narrow (< 60 cols).
+    // When height is short, a 2x2 grid preserves more rows per card than 4-way vertical splitting.
+    let is_stacked = area.width < 60;
 
     if is_stacked {
         let card_rows = Layout::default()
@@ -188,11 +190,17 @@ fn render_streak_card(app: &App, frame: &mut Frame, area: Rect) {
 
     let (status_text, status_color) = format_streak_status(studied_today);
 
+    let today = chrono::Local::now().date_naive();
+    let days_from_monday = today.weekday().num_days_from_monday();
+    let monday = today - chrono::Duration::days(days_from_monday as i64);
+    let sunday = monday + chrono::Duration::days(6);
+
     let days_studied_week = app
         .daily_summaries
         .iter()
-        .filter(|s| s.duration > chrono::Duration::zero())
-        .count();
+        .filter(|s| s.date >= monday && s.date <= sunday && s.duration > chrono::Duration::zero())
+        .count()
+        .min(7);
     let consistency_pct = (days_studied_week as f64 / 7.0 * 100.0).round() as u32;
 
     let mut lines = Vec::new();
@@ -250,7 +258,7 @@ fn render_streak_card(app: &App, frame: &mut Frame, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )]));
 
-        let consistency_label = if inner.width < 34 {
+        let consistency_label = if inner.width < 39 {
             format!("Consistency: {days_studied_week}/7d ({consistency_pct}%)")
         } else {
             format!("Consistency: {days_studied_week}/7 days this week ({consistency_pct}%)")
@@ -678,17 +686,19 @@ fn render_pomodoro_metrics_card(app: &App, frame: &mut Frame, area: Rect) {
     // Line 3: Today's target / tip
     if inner.height >= 4 {
         if completed_today > 0 || completed_this_week > 0 {
-            let note = if completed_today >= 8 {
-                "(Target met! 🎉)"
+            let (label, note) = if inner.width < 42 {
+                let n = if completed_today >= 8 { " (Done)" } else { "" };
+                (format!("Target: {completed_today}/8"), n)
             } else {
-                "(In progress)"
+                let n = if completed_today >= 8 {
+                    " (Target met! 🎉)"
+                } else {
+                    " (In progress)"
+                };
+                (format!("Daily Target: {completed_today}/8 sessions"), n)
             };
             lines.push(Line::from(vec![
-                Span::styled("Daily Target: ", Style::default().fg(Color::Gray)),
-                Span::styled(
-                    format!("{completed_today}/8 sessions "),
-                    Style::default().fg(Color::White),
-                ),
+                Span::styled(label, Style::default().fg(Color::Gray)),
                 Span::styled(
                     note,
                     Style::default().fg(if completed_today >= 8 {

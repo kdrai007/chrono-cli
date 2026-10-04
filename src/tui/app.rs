@@ -651,6 +651,7 @@ impl App {
 
     /// Refreshes streak statistics, daily summaries, subject breakdowns, and Pomodoro metrics.
     pub fn refresh_analytics(&mut self, db: &Database) {
+        self.refresh_history(db);
         let today = chrono::Local::now().date_naive();
         let days_from_monday = today.weekday().num_days_from_monday();
         let monday = today - chrono::Duration::days(days_from_monday as i64);
