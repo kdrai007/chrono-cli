@@ -252,14 +252,22 @@ impl App {
     /// Starts or stops the active timer in the database and updates state.
     pub fn start_stop_timer(&mut self, db: &mut Database) {
         if self.active_entry.is_some() {
-            if let Ok(Some(entry)) = db.stop_active_entry() {
+            let stopped = match db.stop_active_entry() {
+                Ok(s) => s,
+                Err(e) => {
+                    self.set_status_message(format!("DB error stopping timer: {e}"));
+                    None
+                }
+            };
+            self.active_entry = None;
+            self.active_project_name = None;
+
+            if let Some(entry) = stopped {
                 let desc = if entry.description.is_empty() {
                     "Untitled Session".to_string()
                 } else {
                     entry.description.clone()
                 };
-                self.active_entry = None;
-                self.active_project_name = None;
 
                 if entry.entry_mode == EntryMode::PomodoroWork {
                     let next = self.pomodoro.next_phase();
@@ -283,16 +291,21 @@ impl App {
             let desc = "Study Session";
             let mut entry = TimeEntry::new(desc, Utc::now());
             entry.entry_mode = EntryMode::Stopwatch;
-            if let Ok(started) = db.start_entry(&entry) {
-                self.active_entry = Some(started);
-                self.active_project_name = None;
-                self.set_status_message(format!("Started timer: {desc}"));
-                let _ = self.notifications.send(&NotificationEvent::Custom {
-                    title: "Timer Started".to_string(),
-                    body: format!("Started {desc}"),
-                });
-                self.refresh_today_entries(db);
+            match db.start_entry(&entry) {
+                Ok(started) => {
+                    self.active_entry = Some(started);
+                    self.active_project_name = None;
+                    self.set_status_message(format!("Started timer: {desc}"));
+                    let _ = self.notifications.send(&NotificationEvent::Custom {
+                        title: "Timer Started".to_string(),
+                        body: format!("Started {desc}"),
+                    });
+                }
+                Err(e) => {
+                    self.set_status_message(format!("DB error starting timer: {e}"));
+                }
             }
+            self.refresh_today_entries(db);
         }
     }
 
@@ -309,24 +322,46 @@ impl App {
                     };
                     entry.entry_mode = new_mode;
                     entry.pomodoro_index = phase.session_index();
-                    entry.start_time = Utc::now();
-                    let _ = db.update_entry(&entry);
+                    if let Err(e) = db.update_entry(&entry) {
+                        self.set_status_message(format!("DB error updating entry: {e}"));
+                    }
                     self.active_entry = Some(entry);
                     self.set_status_message(format!("Switched to Pomodoro: {phase}"));
                 }
                 EntryMode::PomodoroWork | EntryMode::PomodoroBreak => {
+                    let _ = match db.stop_active_entry() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            self.set_status_message(format!("DB error stopping phase: {e}"));
+                            None
+                        }
+                    };
                     let next_phase = self.pomodoro.next_phase();
                     let new_mode = if next_phase.is_work() {
                         EntryMode::PomodoroWork
                     } else {
                         EntryMode::PomodoroBreak
                     };
-                    entry.entry_mode = new_mode;
-                    entry.pomodoro_index = next_phase.session_index();
-                    entry.start_time = Utc::now();
-                    let _ = db.update_entry(&entry);
-                    self.active_entry = Some(entry);
-                    self.set_status_message(format!("Pomodoro phase: {next_phase}"));
+                    let desc = if new_mode == EntryMode::PomodoroBreak {
+                        "Pomodoro Break".to_string()
+                    } else {
+                        format!("Pomodoro Work #{}", next_phase.session_index())
+                    };
+                    let mut new_entry = TimeEntry::new(&desc, Utc::now());
+                    new_entry.project_id = entry.project_id;
+                    new_entry.tags = entry.tags.clone();
+                    new_entry.entry_mode = new_mode;
+                    new_entry.pomodoro_index = next_phase.session_index();
+
+                    match db.start_entry(&new_entry) {
+                        Ok(started) => {
+                            self.active_entry = Some(started);
+                            self.set_status_message(format!("Pomodoro phase: {next_phase}"));
+                        }
+                        Err(e) => {
+                            self.set_status_message(format!("DB error starting phase: {e}"));
+                        }
+                    }
                 }
             }
             self.refresh_today_entries(db);
@@ -337,15 +372,25 @@ impl App {
             } else {
                 EntryMode::PomodoroBreak
             };
-            let mut entry = TimeEntry::new("Pomodoro Focus", Utc::now());
+            let desc = if mode == EntryMode::PomodoroBreak {
+                "Pomodoro Break".to_string()
+            } else {
+                format!("Pomodoro Work #{}", phase.session_index())
+            };
+            let mut entry = TimeEntry::new(&desc, Utc::now());
             entry.entry_mode = mode;
             entry.pomodoro_index = phase.session_index();
-            if let Ok(started) = db.start_entry(&entry) {
-                self.active_entry = Some(started);
-                self.active_project_name = None;
-                self.set_status_message(format!("Started Pomodoro: {phase}"));
-                self.refresh_today_entries(db);
+            match db.start_entry(&entry) {
+                Ok(started) => {
+                    self.active_entry = Some(started);
+                    self.active_project_name = None;
+                    self.set_status_message(format!("Started Pomodoro: {phase}"));
+                }
+                Err(e) => {
+                    self.set_status_message(format!("DB error starting pomodoro: {e}"));
+                }
             }
+            self.refresh_today_entries(db);
         }
     }
 
@@ -357,7 +402,9 @@ impl App {
 
         let target = self.today_entries[self.selected_recent_index].clone();
         if self.active_entry.is_some() {
-            let _ = db.stop_active_entry();
+            if let Err(e) = db.stop_active_entry() {
+                self.set_status_message(format!("DB error stopping active timer: {e}"));
+            }
             self.active_entry = None;
         }
 
@@ -367,18 +414,23 @@ impl App {
         new_entry.entry_mode = target.entry_mode;
         new_entry.pomodoro_index = target.pomodoro_index;
 
-        if let Ok(started) = db.start_entry(&new_entry) {
-            let mut proj_name = None;
-            if let Some(pid) = started.project_id {
-                if let Ok(Some(p)) = db.get_project(pid) {
-                    proj_name = Some(p.name);
+        match db.start_entry(&new_entry) {
+            Ok(started) => {
+                let mut proj_name = None;
+                if let Some(pid) = started.project_id {
+                    if let Ok(Some(p)) = db.get_project(pid) {
+                        proj_name = Some(p.name);
+                    }
                 }
+                self.set_status_message(format!("Repeated session: {}", target.description));
+                self.active_entry = Some(started);
+                self.active_project_name = proj_name;
             }
-            self.set_status_message(format!("Repeated session: {}", target.description));
-            self.active_entry = Some(started);
-            self.active_project_name = proj_name;
-            self.refresh_today_entries(db);
+            Err(e) => {
+                self.set_status_message(format!("DB error repeating entry: {e}"));
+            }
         }
+        self.refresh_today_entries(db);
     }
 
     /// Handles keyboard events without database operations.

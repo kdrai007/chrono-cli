@@ -99,7 +99,7 @@ impl<'a> Widget for BigClock<'a> {
         }
 
         // Narrow or shallow area fallback: styled single-line text
-        if area.width < 45 || area.height < 6 {
+        if area.width < 35 || area.height < 3 {
             let text = &self.time_str;
             let text_len = text.len() as u16;
             let x = area.x + (area.width.saturating_sub(text_len)) / 2;

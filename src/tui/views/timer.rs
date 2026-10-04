@@ -16,7 +16,7 @@ use crate::tui::widgets::BigClock;
 /// Converts a hex color string (e.g. `"#3498db"`) to a `ratatui::style::Color`.
 pub fn parse_hex_color(hex: &str) -> Color {
     let s = hex.trim().trim_start_matches('#');
-    if s.len() == 6 {
+    if s.len() == 6 && s.is_ascii() && s.chars().all(|c| c.is_ascii_hexdigit()) {
         if let (Ok(r), Ok(g), Ok(b)) = (
             u8::from_str_radix(&s[0..2], 16),
             u8::from_str_radix(&s[2..4], 16),
@@ -340,6 +340,9 @@ fn render_bottom_card(app: &App, frame: &mut Frame, area: Rect) {
     let mut distinct_projects = HashSet::new();
 
     for entry in &app.today_entries {
+        if entry.entry_mode == EntryMode::PomodoroBreak {
+            continue;
+        }
         if let Some(end) = entry.end_time {
             total_seconds += (end - entry.start_time).num_seconds().max(0);
         } else {
@@ -354,7 +357,7 @@ fn render_bottom_card(app: &App, frame: &mut Frame, area: Rect) {
     let total_formatted = format_duration_human(&total_dur);
     let subject_count = distinct_projects.len();
 
-    let summary_line = Line::from(vec![
+    let mut spans = vec![
         Span::styled("  Total Study: ", Style::default().fg(Color::Cyan)),
         Span::styled(
             total_formatted,
@@ -364,18 +367,22 @@ fn render_bottom_card(app: &App, frame: &mut Frame, area: Rect) {
         ),
         Span::styled(
             format!(
-                " across {} subject{} ({} sessions)",
+                " across {} subject{}",
                 subject_count,
-                if subject_count == 1 { "" } else { "s" },
-                app.today_entries.len()
+                if subject_count == 1 { "" } else { "s" }
             ),
             Style::default().fg(Color::Gray),
         ),
-        Span::styled(
+    ];
+
+    if inner.width >= 90 {
+        spans.push(Span::styled(
             "   [j/k or ↑/↓]: select session   [r]: restart selected",
             Style::default().fg(Color::DarkGray),
-        ),
-    ]);
+        ));
+    }
+
+    let summary_line = Line::from(spans);
     frame.render_widget(Paragraph::new(summary_line), sub_chunks[0]);
 
     // 2. Table / List of today's recent 5 study sessions

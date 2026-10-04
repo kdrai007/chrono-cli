@@ -39,8 +39,8 @@ fn test_big_clock_formatting_various_durations() {
 
 #[test]
 fn test_big_clock_narrow_fallback_and_wide_rendering() {
-    // 1. Narrow terminal area (< 45 cols) falls back to styled single-line text
-    let backend_narrow = TestBackend::new(35, 5);
+    // 1. Narrow terminal area (< 35 cols or < 3 rows) falls back to styled single-line text
+    let backend_narrow = TestBackend::new(30, 2);
     let mut term_narrow = Terminal::new(backend_narrow).unwrap();
     let clock = BigClock::new("00:24:18");
 
@@ -62,7 +62,7 @@ fn test_big_clock_narrow_fallback_and_wide_rendering() {
         "Narrow buffer should display single-line time string fallback"
     );
 
-    // 2. Wide terminal area (>= 45 cols, >= 6 rows) renders 3-row block glyphs
+    // 2. Wide terminal area (>= 35 cols, >= 3 rows) renders 3-row block glyphs
     let backend_wide = TestBackend::new(60, 10);
     let mut term_wide = Terminal::new(backend_wide).unwrap();
 
