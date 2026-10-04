@@ -1,4 +1,4 @@
-//! Storage module for Clockify TUI.
+//! Storage module for chrono-cli.
 //!
 //! Handles SQLite persistence, schema migrations, and domain entity repository operations.
 

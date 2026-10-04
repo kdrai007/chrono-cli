@@ -1,5 +1,5 @@
 use chrono::{Duration, TimeZone, Utc};
-use clockify_tui::domain::{
+use chrono_cli::domain::{
     format_duration_hms, format_duration_human, DomainError, EntryMode, PomodoroPhase,
     PomodoroStateMachine, Project, Tag, TimeEntry, DEFAULT_PROJECT_COLOR,
 };

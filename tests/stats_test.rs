@@ -1,9 +1,9 @@
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
-use clockify_tui::domain::{
+use chrono_cli::domain::{
     calculate_streaks, DailyStudySummary, EntryMode, PomodoroStats, Project, ProjectTargetProgress,
     StreakStats, SubjectBreakdown, TimeEntry,
 };
-use clockify_tui::storage::{Database, Repository};
+use chrono_cli::storage::{Database, Repository};
 
 #[test]
 fn test_calculate_streaks_empty_history() {

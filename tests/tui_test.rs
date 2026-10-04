@@ -2,11 +2,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{PomodoroPhase, TimeEntry};
-use clockify_tui::tui::app::{App, Tab};
-use clockify_tui::tui::event::Event;
-use clockify_tui::tui::ui::render;
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{PomodoroPhase, TimeEntry};
+use chrono_cli::tui::app::{App, Tab};
+use chrono_cli::tui::event::Event;
+use chrono_cli::tui::ui::render;
 
 #[test]
 fn test_tui_app_state_and_tab_transitions() {
@@ -102,7 +102,7 @@ fn test_tui_render_standard_80x24_dimensions() {
         .map(|c| c.symbol())
         .collect();
 
-    assert!(content.contains("Clockify TUI"));
+    assert!(content.contains("chrono"));
     assert!(content.contains("Timer"));
     assert!(content.contains("History"));
     assert!(content.contains("IDLE"));

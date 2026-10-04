@@ -1,4 +1,4 @@
-//! Clockify TUI library.
+//! chrono-cli — terminal study time tracker.
 
 pub mod cli;
 pub mod clockify;
@@ -28,7 +28,7 @@ pub use storage::{Database, Repository, StorageError};
 pub use tui::{run_tui, App, Tab};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Hello from clockify-tui!");
+    println!("Hello from chrono-cli!");
     Ok(())
 }
 

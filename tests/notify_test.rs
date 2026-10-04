@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use clockify_tui::config::GeneralConfig;
-use clockify_tui::domain::PomodoroPhase;
-use clockify_tui::notify::{
+use chrono_cli::config::GeneralConfig;
+use chrono_cli::domain::PomodoroPhase;
+use chrono_cli::notify::{
     MockNotificationSink, NotificationEvent, NotificationService, NotificationUrgency, NotifyError,
 };
 

@@ -5,12 +5,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{EntryMode, PomodoroPhase, Project, Tag, TimeEntry};
-use clockify_tui::storage::Database;
-use clockify_tui::tui::app::App;
-use clockify_tui::tui::views::timer::{parse_hex_color, render_timer_view, timer_view};
-use clockify_tui::tui::widgets::BigClock;
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{EntryMode, PomodoroPhase, Project, Tag, TimeEntry};
+use chrono_cli::storage::Database;
+use chrono_cli::tui::app::App;
+use chrono_cli::tui::views::timer::{parse_hex_color, render_timer_view, timer_view};
+use chrono_cli::tui::widgets::BigClock;
 
 #[test]
 fn test_big_clock_formatting_various_durations() {

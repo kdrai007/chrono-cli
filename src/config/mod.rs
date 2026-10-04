@@ -1,4 +1,4 @@
-//! Configuration module for Clockify TUI.
+//! Configuration module for chrono-cli.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -129,11 +129,11 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// Returns the default configuration file path:
-    /// `~/.config/clockify-tui/config.toml` (or system equivalent).
+    /// `~/.config/chrono-cli/config.toml` (or system equivalent).
     pub fn default_config_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from(".config"))
-            .join("clockify-tui")
+            .join("chrono-cli")
             .join("config.toml")
     }
 

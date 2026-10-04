@@ -1,4 +1,4 @@
-use clockify_tui::config::{AppConfig, ClockifyConfig, GeneralConfig, PomodoroConfig};
+use chrono_cli::config::{AppConfig, ClockifyConfig, GeneralConfig, PomodoroConfig};
 use std::fs;
 use tempfile::tempdir;
 
@@ -116,9 +116,7 @@ fn test_load_fallback_when_file_not_found() {
 #[test]
 fn test_default_config_path() {
     let path = AppConfig::default_config_path();
-    assert!(
-        path.ends_with("clockify-tui/config.toml") || path.ends_with("clockify-tui\\config.toml")
-    );
+    assert!(path.ends_with("chrono-cli/config.toml") || path.ends_with("chrono-cli\\config.toml"));
 }
 
 #[test]

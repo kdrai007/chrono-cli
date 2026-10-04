@@ -7,11 +7,11 @@ use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 use tempfile::tempdir;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{EntryMode, Project, TimeEntry};
-use clockify_tui::storage::Database;
-use clockify_tui::tui::app::{App, Tab};
-use clockify_tui::tui::ui::render;
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{EntryMode, Project, TimeEntry};
+use chrono_cli::storage::Database;
+use chrono_cli::tui::app::{App, Tab};
+use chrono_cli::tui::ui::render;
 
 // 1. Full Headless CLI Lifecycle Test:
 // start with project & tags -> status (plain text & JSON) -> stop -> export (CSV & JSON).
@@ -22,7 +22,7 @@ fn test_headless_full_lifecycle() {
     let db_path_str = db_path.to_str().expect("valid path string");
 
     let run_cli = || {
-        let mut cmd = Command::cargo_bin("clockify-tui").expect("clockify-tui binary exists");
+        let mut cmd = Command::cargo_bin("chrono").expect("chrono binary exists");
         cmd.env("CLOCKIFY_DB_PATH", db_path_str);
         cmd
     };
@@ -378,7 +378,7 @@ fn test_all_views_and_modals_render_on_80x24_terminal() -> Result<(), Box<dyn st
             .map(|c| c.symbol())
             .collect();
 
-        assert!(content.contains("Clockify TUI"), "Header should render");
+        assert!(content.contains("chrono"), "Header should render");
         assert!(content.contains("Timer"), "Tab bar should render");
         assert!(content.contains("History"), "Tab bar should render");
         assert!(content.contains("Projects"), "Tab bar should render");

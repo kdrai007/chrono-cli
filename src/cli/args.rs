@@ -73,10 +73,10 @@ pub enum Commands {
     Sync,
 }
 
-/// Command line interface for Clockify TUI.
+/// Command line interface for chrono-cli.
 #[derive(Debug, Parser, Clone)]
 #[command(
-    name = "clockify-tui",
+    name = "chrono",
     author,
     version,
     about = "Terminal-based Clockify study hours and project manager for students"

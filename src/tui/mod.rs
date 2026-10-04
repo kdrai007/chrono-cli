@@ -87,7 +87,7 @@ pub fn run_loop<B: ratatui::backend::Backend>(
     Ok(())
 }
 
-/// Main entry point for launching the interactive Clockify TUI.
+/// Main entry point for launching the interactive chrono-cli TUI.
 pub fn run_tui(db: &mut Database, config: AppConfig) -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = init_terminal()?;
     let event_handler = EventHandler::default();

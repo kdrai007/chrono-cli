@@ -1,9 +1,13 @@
 [package]
-name = "clockify-tui"
+name = "chrono-cli"
 version = "0.1.0"
 edition = "2021"
 authors = ["kdrai"]
-description = "Terminal-based Clockify study hours and project manager for students"
+description = "A terminal-native study time tracker for students — Pomodoro, streaks, and Clockify sync"
+
+[[bin]]
+name = "chrono"
+path = "src/main.rs"
 
 [dependencies]
 ratatui = "0.29"

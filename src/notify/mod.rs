@@ -1,4 +1,4 @@
-//! Notifications and audio/bell alert system for Clockify TUI.
+//! Notifications and audio/bell alert system for chrono-cli.
 //!
 //! Provides desktop notifications via `notify-rust` and terminal bell alerts (`\x07`),
 //! with configuration controls and support for testable mock sinks.
@@ -211,7 +211,7 @@ impl NotificationSink for RealNotificationSink {
     ) -> Result<(), NotifyError> {
         let mut notif = notify_rust::Notification::new();
         notif
-            .appname("clockify-tui")
+            .appname("chrono-cli")
             .summary(title)
             .body(body)
             .urgency(urgency.into());

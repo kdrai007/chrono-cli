@@ -1,4 +1,4 @@
-//! Application state and navigation models for Clockify TUI.
+//! Application state and navigation models for chrono-cli.
 
 use std::collections::HashMap;
 use std::time::Instant;

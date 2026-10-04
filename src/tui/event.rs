@@ -34,7 +34,7 @@ impl EventHandler {
         let event_sender = sender.clone();
 
         let handler = thread::Builder::new()
-            .name("clockify-tui-events".to_string())
+            .name("chrono-cli-events".to_string())
             .spawn(move || loop {
                 match event::poll(tick_rate) {
                     Ok(true) => match event::read() {

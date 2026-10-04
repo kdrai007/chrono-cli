@@ -6,14 +6,14 @@ use ratatui::backend::TestBackend;
 use ratatui::style::Color;
 use ratatui::Terminal;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{
     DailyStudySummary, EntryMode, PomodoroStats, Project, StreakStats, SubjectBreakdown, TimeEntry,
 };
-use clockify_tui::storage::Database;
-use clockify_tui::tui::app::{App, Tab};
-use clockify_tui::tui::ui::render;
-use clockify_tui::tui::views::analytics::{
+use chrono_cli::storage::Database;
+use chrono_cli::tui::app::{App, Tab};
+use chrono_cli::tui::ui::render;
+use chrono_cli::tui::views::analytics::{
     analytics_view, format_day_bar, format_efficiency_ratio, format_gauge, format_hours_human,
     format_streak_badge, format_streak_status, render_analytics_view,
 };

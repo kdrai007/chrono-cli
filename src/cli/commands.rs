@@ -382,7 +382,7 @@ pub fn handle_sync(
     {
         println!("Clockify sync is disabled or API key is not configured.");
         println!(
-            "To enable sync, configure api_key and workspace_id in ~/.config/clockify-tui/config.toml"
+            "To enable sync, configure api_key and workspace_id in ~/.config/chrono-cli/config.toml"
         );
         let _ = notifications.notify_sync(false, "Clockify sync disabled or unconfigured");
         return Ok(());

@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use super::schema;
 use super::StorageError;
 
-/// SQLite database connection wrapper for Clockify TUI.
+/// SQLite database connection wrapper for chrono-cli.
 pub struct Database {
     conn: Connection,
 }
@@ -36,12 +36,12 @@ impl Database {
     }
 
     /// Returns the default database file path:
-    /// `~/.local/share/clockify-tui/clockify.db` (or platform equivalent).
+    /// `~/.local/share/chrono-cli/chrono.db` (or platform equivalent).
     pub fn default_db_path() -> PathBuf {
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("clockify-tui")
-            .join("clockify.db")
+            .join("chrono-cli")
+            .join("chrono.db")
     }
 
     /// Returns a shared reference to the inner SQLite connection.

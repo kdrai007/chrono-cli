@@ -1,13 +1,13 @@
-# ⏱ Clockify TUI
+# ⏱ chrono-cli
 
 [![CI Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)]()
-[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)]()
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://rustup.rs/)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](https://rustup.rs/)
 
-> **Terminal-based Clockify study hours and project manager designed specifically for students and focused learners.**
+> **Terminal-native study time tracker for students — Pomodoro, streaks, and Clockify sync.**
 
-`clockify-tui` provides a distraction-free, terminal-native workspace for tracking coursework, revisions, reading sessions, and problem sets. Built with a local-first SQLite architecture in WAL mode, it ensures lightning-fast performance, rock-solid offline reliability, and zero latency, with optional two-way synchronization to Clockify cloud workspaces.
+`chrono-cli` provides a distraction-free, terminal-native workspace for tracking coursework, revisions, reading sessions, and problem sets. Built with a local-first SQLite architecture in WAL mode, it ensures lightning-fast performance, rock-solid offline reliability, and zero latency, with optional two-way synchronization to Clockify cloud workspaces.
 
 ---
 
@@ -38,8 +38,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/kdrai/clockify-tui.git
-cd clockify-tui
+git clone https://github.com/kdrai/chrono-cli.git
+cd chrono-cli
 
 # Build optimized release binary
 cargo build --release
@@ -57,7 +57,7 @@ cargo build --release --no-default-features
 
 ## ⚙ Configuration Guide
 
-The configuration file is stored at `~/.config/clockify-tui/config.toml` (or custom path via `CLOCKIFY_CONFIG_PATH` / `--config-path`). If not found, `clockify-tui` automatically applies sensible student defaults.
+The configuration file is stored at `~/.config/chrono-cli/config.toml` (or custom path via `CLOCKIFY_CONFIG_PATH` / `--config-path`). If not found, `chrono` automatically applies sensible student defaults.
 
 ### Complete TOML Schema
 
@@ -103,7 +103,7 @@ sync_on_exit = false
 
 ## 📊 Waybar Status Bar Integration
 
-`clockify-tui` outputs custom Waybar JSON via `clockify-tui status --json`. It reports formatted time elapsed, active project, description, and status classes (`"running"` or `"idle"`).
+`chrono-cli` outputs custom Waybar JSON via `chrono status --json`. It reports formatted time elapsed, active project, description, and status classes (`"running"` or `"idle"`).
 
 ### JSON Output Schema
 
@@ -135,9 +135,9 @@ Add `custom/clockify` to your `modules-left`, `modules-center`, or `modules-righ
     "format": "⏱ {}",
     "return-type": "json",
     "interval": 2,
-    "exec": "clockify-tui status --json",
-    "on-click": "clockify-tui stop",
-    "on-click-middle": "clockify-tui start --pomodoro",
+    "exec": "chrono status --json",
+    "on-click": "chrono stop",
+    "on-click-middle": "chrono start --pomodoro",
     "tooltip": true
 }
 ```
@@ -199,42 +199,42 @@ Manage your study sessions directly from scripts, shell aliases, or window manag
 ### 1. `start` — Start a Timer
 ```bash
 # Start an open stopwatch timer with description
-clockify-tui start "Reviewing Chapter 4 Linear Equations"
+chrono start "Reviewing Chapter 4 Linear Equations"
 
 # Start with an associated course/project and tags
-clockify-tui start "Physics Lab Report" -p "Physics" -t "Lab,Draft"
+chrono start "Physics Lab Report" -p "Physics" -t "Lab,Draft"
 
 # Start directly as a structured Pomodoro work session
-clockify-tui start "Midterm Revision" -p "Algorithms" --pomodoro
+chrono start "Midterm Revision" -p "Algorithms" --pomodoro
 ```
 
 ### 2. `stop` — Stop Current Active Timer
 ```bash
-clockify-tui stop
+chrono stop
 ```
 *Outputs session duration and confirms database write.*
 
 ### 3. `status` — Check Current State
 ```bash
 # Plain-text human-readable format
-clockify-tui status
+chrono status
 
 # JSON format for status bars (Waybar, Polybar, etc.)
-clockify-tui status --json
+chrono status --json
 ```
 
 ### 4. `export` — Export Data to CSV or JSON
 ```bash
 # Output CSV to stdout
-clockify-tui export --format csv
+chrono export --format csv
 
 # Export JSON to a target file
-clockify-tui export --format json -o ~/backup_study_sessions.json
+chrono export --format json -o ~/backup_study_sessions.json
 ```
 
 ### 5. `sync` — Clockify Cloud Sync
 ```bash
-clockify-tui sync
+chrono sync
 ```
 *Pushes unsynced local study logs and pulls remote courses and tags.*
 
@@ -245,6 +245,23 @@ clockify-tui sync
 * **Local-First Reliability**: All writes occur immediately in the local SQLite database inside an isolated transaction. No network call can ever block or drop a user action.
 * **Responsive 80x24 Terminal Layouts**: All four viewports (Timer, History, Projects, Analytics) and all modal dialogs are explicitly designed and tested to fit standard 80×24 terminal displays without overflowing or clipping.
 * **Notification Decoupling**: Desktop alerts and terminal bells operate asynchronously via a decoupled notification subsystem, gracefully handling headless, SSH, and GUI desktop environments alike.
+
+---
+
+## 🗄 Data Storage
+
+* **Database**: `~/.local/share/chrono-cli/chrono.db` (SQLite, WAL mode)
+* **Config**: `~/.config/chrono-cli/config.toml`
+
+Override paths at runtime:
+```bash
+chrono --db-path /tmp/test.db --config-path ./custom.toml status
+```
+Or via environment variables:
+```bash
+export CLOCKIFY_DB_PATH=~/.local/share/chrono-cli/chrono.db
+export CLOCKIFY_CONFIG_PATH=~/.config/chrono-cli/config.toml
+```
 
 ---
 

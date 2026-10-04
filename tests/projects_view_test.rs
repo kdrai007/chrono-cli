@@ -5,12 +5,12 @@ use ratatui::backend::TestBackend;
 use ratatui::style::Color;
 use ratatui::Terminal;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{Project, ProjectTargetProgress};
-use clockify_tui::storage::Database;
-use clockify_tui::tui::app::{App, Tab};
-use clockify_tui::tui::ui::render;
-use clockify_tui::tui::views::projects::{
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{Project, ProjectTargetProgress};
+use chrono_cli::storage::Database;
+use chrono_cli::tui::app::{App, Tab};
+use chrono_cli::tui::ui::render;
+use chrono_cli::tui::views::projects::{
     format_hours_human, format_progress_bar, get_progress_color, get_status_badge, projects_view,
     render_delete_project_modal, render_project_form_modal, render_projects_view,
 };
@@ -477,7 +477,7 @@ fn test_render_standard_80x24_dimensions_and_delete_modal() {
     // 1. Base view without modal: verify 80-column responsive header and table
     terminal
         .draw(|f| {
-            clockify_tui::tui::ui::render(&app, f);
+            chrono_cli::tui::ui::render(&app, f);
         })
         .unwrap();
 
@@ -496,7 +496,7 @@ fn test_render_standard_80x24_dimensions_and_delete_modal() {
     app.show_delete_project_modal = true;
     terminal
         .draw(|f| {
-            clockify_tui::tui::ui::render(&app, f);
+            chrono_cli::tui::ui::render(&app, f);
         })
         .unwrap();
 
@@ -561,7 +561,7 @@ fn test_project_list_viewport_scrolling() {
 
     terminal
         .draw(|f| {
-            clockify_tui::tui::views::projects::render_projects_view(&app, f, f.area());
+            chrono_cli::tui::views::projects::render_projects_view(&app, f, f.area());
         })
         .unwrap();
 

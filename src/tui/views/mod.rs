@@ -1,4 +1,4 @@
-//! View implementations for each primary tab in Clockify TUI.
+//! View implementations for each primary tab in chrono-cli.
 
 pub mod analytics;
 pub mod history;

@@ -1,6 +1,6 @@
 use chrono::{Duration, TimeZone, Utc};
-use clockify_tui::domain::{EntryMode, Project, Tag, TimeEntry, DEFAULT_PROJECT_COLOR};
-use clockify_tui::storage::{Database, Repository, StorageError};
+use chrono_cli::domain::{EntryMode, Project, Tag, TimeEntry, DEFAULT_PROJECT_COLOR};
+use chrono_cli::storage::{Database, Repository, StorageError};
 use tempfile::tempdir;
 
 #[test]
@@ -435,8 +435,8 @@ fn test_database_open_file_wal_and_default_path() {
     // Check default path format
     let default_path = Database::default_db_path();
     assert!(
-        default_path.ends_with("clockify-tui/clockify.db"),
-        "Default DB path should end with clockify-tui/clockify.db, got {:?}",
+        default_path.ends_with("chrono-cli/chrono.db"),
+        "Default DB path should end with chrono-cli/chrono.db, got {:?}",
         default_path
     );
 }

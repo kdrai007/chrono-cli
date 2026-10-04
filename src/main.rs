@@ -1,7 +1,7 @@
+use chrono_cli::cli::{run_cli, Cli};
+use chrono_cli::config::AppConfig;
+use chrono_cli::storage::Database;
 use clap::Parser;
-use clockify_tui::cli::{run_cli, Cli};
-use clockify_tui::config::AppConfig;
-use clockify_tui::storage::Database;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -17,6 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    clockify_tui::tui::run_tui(&mut db, config)?;
+    chrono_cli::tui::run_tui(&mut db, config)?;
     Ok(())
 }

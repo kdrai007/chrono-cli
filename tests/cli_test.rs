@@ -3,7 +3,7 @@ use tempfile::tempdir;
 
 #[test]
 fn test_cli_help() {
-    let mut cmd = Command::cargo_bin("clockify-tui").expect("binary clockify-tui exists");
+    let mut cmd = Command::cargo_bin("chrono").expect("binary chrono exists");
     cmd.arg("--help");
 
     let assert = cmd.assert().success();
@@ -24,7 +24,7 @@ fn test_cli_full_workflow() {
     let db_path_str = db_path.to_str().unwrap();
 
     let new_cmd = || {
-        let mut cmd = Command::cargo_bin("clockify-tui").expect("binary clockify-tui exists");
+        let mut cmd = Command::cargo_bin("chrono").expect("binary chrono exists");
         cmd.env("CLOCKIFY_DB_PATH", db_path_str);
         cmd
     };

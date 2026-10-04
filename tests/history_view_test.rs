@@ -5,12 +5,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use clockify_tui::config::AppConfig;
-use clockify_tui::domain::{Project, TimeEntry};
-use clockify_tui::storage::Database;
-use clockify_tui::tui::app::{App, Tab};
-use clockify_tui::tui::ui::render;
-use clockify_tui::tui::views::history::{
+use chrono_cli::config::AppConfig;
+use chrono_cli::domain::{Project, TimeEntry};
+use chrono_cli::storage::Database;
+use chrono_cli::tui::app::{App, Tab};
+use chrono_cli::tui::ui::render;
+use chrono_cli::tui::views::history::{
     group_history_entries, history_view, render_delete_modal, render_entry_form_modal,
     render_filter_modal, render_history_view, DateGroup,
 };

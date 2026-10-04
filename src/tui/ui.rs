@@ -119,7 +119,7 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 
     // Left: App title
     let title_p = Paragraph::new(Span::styled(
-        "⏱ Clockify TUI",
+        "⏱ chrono",
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),

@@ -1,11 +1,11 @@
 use chrono::{TimeZone, Utc};
-use clockify_tui::clockify::{
+use chrono_cli::clockify::{
     entry_to_create_request, ClockifyApi, ClockifyClient, ClockifyError, ClockifyProject,
     ClockifyTag, ClockifyUser, ClockifyWorkspace, CreateTimeEntryRequest, SyncEngine, SyncError,
     SyncResult, TimeEntryResponse, TimeInterval,
 };
-use clockify_tui::domain::{EntryMode, Project, Tag, TimeEntry};
-use clockify_tui::storage::Database;
+use chrono_cli::domain::{EntryMode, Project, Tag, TimeEntry};
+use chrono_cli::storage::Database;
 use std::sync::Mutex;
 
 #[derive(Default)]
