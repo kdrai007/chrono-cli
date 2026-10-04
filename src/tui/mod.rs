@@ -2,9 +2,12 @@
 
 pub mod app;
 pub mod event;
+pub mod fuzzy;
 pub mod ui;
 pub mod views;
 pub mod widgets;
+
+pub use fuzzy::{fuzzy_match, FuzzyMatch};
 
 use std::io::{self, Stdout};
 

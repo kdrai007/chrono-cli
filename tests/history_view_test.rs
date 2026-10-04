@@ -560,3 +560,124 @@ fn test_render_root_ui_with_history_tab_and_active_modals() {
         .collect();
     assert!(buf_filt.contains("Filter History Entries"));
 }
+
+#[test]
+fn test_previous_project_selection_and_fuzzy_fzf_in_entry_modal() {
+    let mut app = App::new(AppConfig::default());
+    let mut p1 = Project::new("Algorithms").unwrap();
+    p1.id = Some(1);
+    let mut p2 = Project::new("Prompt Engineering").unwrap();
+    p2.id = Some(2);
+    let mut p3 = Project::new("Mathematics").unwrap();
+    p3.id = Some(3);
+
+    app.project_list = vec![p1.clone(), p2.clone(), p3.clone()];
+    app.projects.insert(1, p1);
+    app.projects.insert(2, p2);
+    app.projects.insert(3, p3);
+
+    // 1. Open new entry modal
+    app.open_new_entry_modal();
+    assert!(app.show_new_entry_modal);
+    assert_eq!(app.entry_form.active_field, 0);
+
+    // 2. Tab to Project field
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    assert_eq!(app.entry_form.active_field, 1);
+
+    // 3. Verify previous projects are populated
+    let prev = app.get_previous_projects();
+    assert_eq!(prev.len(), 3);
+
+    // 4. Test arrow navigation in suggestions
+    assert_eq!(app.entry_form.selected_project_option, 0);
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.entry_form.selected_project_option, 1);
+
+    // 5. Type fuzzy query "pe" -> matches "Prompt Engineering"
+    app.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    assert_eq!(app.entry_form.project, "pe");
+    assert_eq!(app.entry_form.selected_project_option, 0);
+
+    let matches = app.fuzzy_filter_projects(&app.entry_form.project);
+    assert!(!matches.is_empty());
+    assert_eq!(matches[0].0.name, "Prompt Engineering");
+
+    // 6. Press Enter to select suggestion
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.entry_form.project, "Prompt Engineering");
+    assert_eq!(app.entry_form.active_field, 2); // Advanced to Duration
+
+    // 7. Move back to Project and test Ctrl+F (FZF modal)
+    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE));
+    assert_eq!(app.entry_form.active_field, 1);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+    assert!(app.entry_form.show_fzf_modal);
+
+    // Clear query in FZF modal and search "math"
+    app.entry_form.fzf_query.clear();
+    for ch in "math".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+    }
+    assert_eq!(app.entry_form.fzf_query, "math");
+
+    let fzf_matches = app.fuzzy_filter_projects(&app.entry_form.fzf_query);
+    assert!(!fzf_matches.is_empty());
+    assert_eq!(fzf_matches[0].0.name, "Mathematics");
+
+    // Press Enter to select Mathematics from FZF modal
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(!app.entry_form.show_fzf_modal);
+    assert_eq!(app.entry_form.project, "Mathematics");
+    assert_eq!(app.entry_form.active_field, 2);
+}
+
+#[test]
+fn test_render_entry_form_with_project_suggestions_and_fzf_modal() {
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut app = App::new(AppConfig::default());
+    let mut p1 = Project::new("Prompt Engineering").unwrap();
+    p1.id = Some(1);
+    app.project_list = vec![p1.clone()];
+    app.projects.insert(1, p1);
+
+    app.open_new_entry_modal();
+    app.entry_form.active_field = 1; // Project field focused
+
+    // Render with Project field active -> should render Previous Projects dropdown
+    terminal
+        .draw(|f| render_entry_form_modal(&app, f, true))
+        .unwrap();
+
+    let buf: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(buf.contains("Previous Projects"));
+    assert!(buf.contains("Prompt Engineering"));
+
+    // Now open FZF modal
+    app.entry_form.show_fzf_modal = true;
+    app.entry_form.fzf_query = "prompt".to_string();
+    terminal
+        .draw(|f| render_entry_form_modal(&app, f, true))
+        .unwrap();
+
+    let buf_fzf: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+    assert!(buf_fzf.contains("Select Previous Project (FZF)"));
+    assert!(buf_fzf.contains("Search / Filter"));
+}
+
