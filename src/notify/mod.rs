@@ -137,10 +137,10 @@ impl NotificationEvent {
         match self {
             Self::PomodoroFinished { phase, next_phase } => match (phase, next_phase) {
                 (PomodoroPhase::Work(_), PomodoroPhase::ShortBreak(_)) => {
-                    "Time for a 5-minute break.".to_string()
+                    "Time for a short break.".to_string()
                 }
                 (PomodoroPhase::Work(_), PomodoroPhase::LongBreak(_)) => {
-                    "Time for a 15-minute break. Great work!".to_string()
+                    "Time for a long break. Great work!".to_string()
                 }
                 (PomodoroPhase::Work(_), PomodoroPhase::Work(_)) => {
                     "Starting next focus session.".to_string()
@@ -370,6 +370,9 @@ impl NotificationService {
     /// Respects `terminal_bell` and `desktop_notifications` settings in `GeneralConfig`.
     pub fn send(&self, event: &NotificationEvent) -> Result<(), NotifyError> {
         if let Ok(mut recorded) = self.recorded_events.lock() {
+            if recorded.len() >= 100 {
+                recorded.remove(0);
+            }
             recorded.push(event.clone());
         }
 

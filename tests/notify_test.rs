@@ -14,7 +14,7 @@ fn test_notification_event_pomodoro_work_to_short_break() {
     };
 
     assert_eq!(event.title(), "Focus Session Complete!");
-    assert_eq!(event.body(), "Time for a 5-minute break.");
+    assert_eq!(event.body(), "Time for a short break.");
     assert_eq!(event.urgency(), NotificationUrgency::Normal);
 }
 
@@ -231,6 +231,7 @@ fn test_service_mock_sink_error_handling() {
 }
 
 #[test]
+#[ignore = "Avoid sending real desktop notification popup during automated unit tests"]
 fn test_service_headless_real_sink_no_panic() {
     let service = NotificationService::new(GeneralConfig {
         desktop_notifications: true,
