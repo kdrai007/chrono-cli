@@ -44,7 +44,7 @@ pub fn run_cli(
             commands::handle_export(db, format, output)?;
         }
         Commands::Sync => {
-            commands::handle_sync(config, &notifications)?;
+            commands::handle_sync(db, config, &notifications)?;
         }
     }
 

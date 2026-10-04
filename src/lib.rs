@@ -1,12 +1,18 @@
 //! Clockify TUI library.
 
 pub mod cli;
+pub mod clockify;
 pub mod config;
 pub mod domain;
 pub mod notify;
 pub mod storage;
 
 pub use cli::{run_cli, Cli, Commands, ExportFormat, ExportRecord, WaybarOutput};
+pub use clockify::{
+    entry_to_create_request, ClockifyApi, ClockifyClient, ClockifyError, ClockifyProject,
+    ClockifyTag, ClockifyUser, ClockifyWorkspace, CreateTimeEntryRequest, SyncEngine, SyncError,
+    SyncResult, TimeEntryResponse, TimeInterval,
+};
 pub use config::AppConfig;
 pub use domain::{
     calculate_streaks, format_duration_hms, format_duration_human, DailyStudySummary, DomainError,

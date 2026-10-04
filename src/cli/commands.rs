@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::args::ExportFormat;
+use crate::clockify::{ClockifyClient, SyncEngine};
 use crate::config::AppConfig;
 use crate::domain::{EntryMode, Project, Tag, TimeEntry};
 use crate::notify::{NotificationEvent, NotificationService};
@@ -371,10 +372,14 @@ fn export_json<W: Write>(
 
 /// Handles cloud synchronization command with Clockify.
 pub fn handle_sync(
+    db: &Database,
     config: &AppConfig,
     notifications: &NotificationService,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !config.clockify.enabled || config.clockify.api_key.trim().is_empty() {
+    if !config.clockify.enabled
+        || config.clockify.api_key.trim().is_empty()
+        || config.clockify.workspace_id.trim().is_empty()
+    {
         println!("Clockify sync is disabled or API key is not configured.");
         println!(
             "To enable sync, configure api_key and workspace_id in ~/.config/clockify-tui/config.toml"
@@ -384,8 +389,32 @@ pub fn handle_sync(
     }
 
     println!("Synchronizing time entries with Clockify...");
-    // Future sync implementation (Task 8)
-    println!("Sync completed.");
-    let _ = notifications.notify_sync(true, "Synchronized with Clockify");
-    Ok(())
+    let client = ClockifyClient::new(&config.clockify.api_key)?;
+    match SyncEngine::sync(&client, db, &config.clockify.workspace_id) {
+        Ok(result) => {
+            println!(
+                "Sync completed: {} entries pushed, {} projects pulled, {} tags pulled.",
+                result.pushed_entries, result.pulled_projects, result.pulled_tags
+            );
+            if !result.errors.is_empty() {
+                println!("Sync warnings/errors ({}):", result.errors.len());
+                for err in &result.errors {
+                    println!("  - {err}");
+                }
+            }
+            let _ = notifications.notify_sync(
+                result.is_success(),
+                &format!(
+                    "Pushed {}, Pulled {} projects, {} tags",
+                    result.pushed_entries, result.pulled_projects, result.pulled_tags
+                ),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            println!("Sync failed: {e}");
+            let _ = notifications.notify_sync(false, &format!("Sync failed: {e}"));
+            Err(e.into())
+        }
+    }
 }
