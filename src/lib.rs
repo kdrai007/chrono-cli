@@ -16,9 +16,9 @@ pub use clockify::{
 };
 pub use config::AppConfig;
 pub use domain::{
-    calculate_streaks, format_duration_hms, format_duration_human, DailyStudySummary, DomainError,
-    EntryMode, PomodoroPhase, PomodoroStateMachine, PomodoroStats, Project, ProjectTargetProgress,
-    StreakStats, SubjectBreakdown, Tag, TimeEntry, DEFAULT_PROJECT_COLOR,
+    calculate_streaks, format_duration_hms, format_duration_human, DailyStudySummary, DailySummary,
+    DomainError, EntryMode, PomodoroPhase, PomodoroStateMachine, PomodoroStats, Project,
+    ProjectTargetProgress, StreakStats, SubjectBreakdown, Tag, TimeEntry, DEFAULT_PROJECT_COLOR,
 };
 pub use notify::{
     MockNotificationSink, NotificationEvent, NotificationService, NotificationSink,

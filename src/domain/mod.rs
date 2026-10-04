@@ -14,8 +14,8 @@ pub use entry::{format_duration_hms, format_duration_human, EntryMode, TimeEntry
 pub use pomodoro::{PomodoroPhase, PomodoroStateMachine};
 pub use project::{Project, DEFAULT_PROJECT_COLOR};
 pub use stats::{
-    calculate_streaks, DailyStudySummary, PomodoroStats, ProjectTargetProgress, StreakStats,
-    SubjectBreakdown,
+    calculate_streaks, DailyStudySummary, DailySummary, PomodoroStats, ProjectTargetProgress,
+    StreakStats, SubjectBreakdown,
 };
 pub use tag::Tag;
 

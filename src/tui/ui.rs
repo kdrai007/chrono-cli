@@ -172,7 +172,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         Tab::Timer => render_timer_tab(app, frame, area),
         Tab::History => render_history_tab(app, frame, area),
         Tab::Projects => render_projects_tab(app, frame, area),
-        Tab::Analytics => render_analytics_tab(frame, area),
+        Tab::Analytics => render_analytics_tab(app, frame, area),
     }
 }
 
@@ -191,31 +191,9 @@ pub fn render_projects_tab(app: &App, frame: &mut Frame, area: Rect) {
     crate::tui::views::projects::render_projects_view(app, frame, area);
 }
 
-/// Renders Tab 4 (Analytics placeholder).
-fn render_analytics_tab(frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(" Study Analytics & Streaks ");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let text = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Statistics & Study Insights", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  Track current and best study streaks, weekly goal completion bars, and subject distribution."),
-        ]),
-        Line::from(vec![
-            Span::styled("  (Streak counters, ASCII progress bars, and breakdown charts will be enabled in Tab 4.)", Style::default().fg(Color::DarkGray)),
-        ]),
-    ];
-
-    let p = Paragraph::new(text);
-    frame.render_widget(p, inner);
+/// Renders Tab 4 (Analytics & Study Streaks view).
+pub fn render_analytics_tab(app: &App, frame: &mut Frame, area: Rect) {
+    crate::tui::views::analytics::render_analytics_view(app, frame, area);
 }
 
 /// Renders the bottom footer bar with hotkey hints and temporary status banner.
@@ -278,9 +256,17 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         ("[q]", " Quit"),
     ];
 
+    let analytics_hints: &[(&str, &str)] = &[
+        ("[r]", " Refresh  "),
+        ("[1-4]", " Tabs  "),
+        ("[?]", " Help  "),
+        ("[q]", " Quit"),
+    ];
+
     let hints = match app.current_tab {
         Tab::History => history_hints,
         Tab::Projects => projects_hints,
+        Tab::Analytics => analytics_hints,
         _ => default_hints,
     };
 
@@ -393,6 +379,10 @@ fn render_help_modal(frame: &mut Frame) {
         Line::from(vec![
             Span::styled(" [d]       ", Style::default().fg(Color::Yellow)),
             Span::raw("Delete item"),
+        ]),
+        Line::from(vec![
+            Span::styled(" [r]       ", Style::default().fg(Color::Yellow)),
+            Span::raw("Refresh analytics"),
         ]),
     ];
 

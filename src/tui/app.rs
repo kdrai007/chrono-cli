@@ -8,7 +8,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::AppConfig;
 use crate::domain::{
-    EntryMode, PomodoroStateMachine, Project, ProjectTargetProgress, Tag, TimeEntry,
+    DailySummary, EntryMode, PomodoroStateMachine, PomodoroStats, Project, ProjectTargetProgress,
+    StreakStats, SubjectBreakdown, Tag, TimeEntry,
 };
 use crate::notify::{NotificationEvent, NotificationService};
 use crate::storage::Database;
@@ -375,6 +376,14 @@ pub struct App {
     pub project_form: ProjectForm,
     /// Cached weekly project target progress metrics keyed by project database ID.
     pub project_progress: HashMap<i64, ProjectTargetProgress>,
+    /// Study streak statistics.
+    pub streak_stats: Option<StreakStats>,
+    /// Daily study summaries for the current week.
+    pub daily_summaries: Vec<DailySummary>,
+    /// Study time breakdown by subject/project for the current week.
+    pub subject_breakdown: Vec<SubjectBreakdown>,
+    /// Pomodoro focus session statistics for the current week.
+    pub pomodoro_stats: Option<PomodoroStats>,
 }
 
 impl App {
@@ -412,6 +421,10 @@ impl App {
             show_delete_project_modal: false,
             project_form: ProjectForm::default(),
             project_progress: HashMap::new(),
+            streak_stats: None,
+            daily_summaries: Vec::new(),
+            subject_breakdown: Vec::new(),
+            pomodoro_stats: None,
         }
     }
 
@@ -453,6 +466,30 @@ impl App {
     /// Builder method to attach cached project target progress metrics.
     pub fn with_project_progress(mut self, progress: HashMap<i64, ProjectTargetProgress>) -> Self {
         self.project_progress = progress;
+        self
+    }
+
+    /// Builder method to attach streak statistics.
+    pub fn with_streak_stats(mut self, stats: Option<StreakStats>) -> Self {
+        self.streak_stats = stats;
+        self
+    }
+
+    /// Builder method to attach daily summaries.
+    pub fn with_daily_summaries(mut self, summaries: Vec<DailySummary>) -> Self {
+        self.daily_summaries = summaries;
+        self
+    }
+
+    /// Builder method to attach subject breakdown.
+    pub fn with_subject_breakdown(mut self, breakdown: Vec<SubjectBreakdown>) -> Self {
+        self.subject_breakdown = breakdown;
+        self
+    }
+
+    /// Builder method to attach pomodoro stats.
+    pub fn with_pomodoro_stats(mut self, stats: Option<PomodoroStats>) -> Self {
+        self.pomodoro_stats = stats;
         self
     }
 
@@ -545,6 +582,7 @@ impl App {
 
         self.refresh_history(db);
         self.refresh_projects(db);
+        self.refresh_analytics(db);
     }
 
     /// Refreshes all historical time entries and cached projects from the database.
@@ -608,6 +646,27 @@ impl App {
             } else {
                 self.active_project_name = None;
             }
+        }
+    }
+
+    /// Refreshes streak statistics, daily summaries, subject breakdowns, and Pomodoro metrics.
+    pub fn refresh_analytics(&mut self, db: &Database) {
+        let today = chrono::Local::now().date_naive();
+        let days_from_monday = today.weekday().num_days_from_monday();
+        let monday = today - chrono::Duration::days(days_from_monday as i64);
+        let sunday = monday + chrono::Duration::days(6);
+
+        if let Ok(streak) = db.get_streak_stats(today) {
+            self.streak_stats = Some(streak);
+        }
+        if let Ok(summaries) = db.get_daily_summaries(monday, sunday) {
+            self.daily_summaries = summaries;
+        }
+        if let Ok(breakdown) = db.get_subject_breakdown(monday, sunday) {
+            self.subject_breakdown = breakdown;
+        }
+        if let Ok(pomo) = db.get_pomodoro_stats(today, monday) {
+            self.pomodoro_stats = Some(pomo);
         }
     }
 
@@ -1514,7 +1573,15 @@ impl App {
                 }
                 _ => {}
             },
-            Tab::Analytics => {}
+            Tab::Analytics => match key.code {
+                KeyCode::Char('r') | KeyCode::Char('R') => {
+                    if let Some(db_ref) = db {
+                        self.refresh_analytics(db_ref);
+                        self.set_status_message("Analytics refreshed");
+                    }
+                }
+                _ => {}
+            },
         }
     }
 }

@@ -12,6 +12,9 @@ pub struct DailyStudySummary {
     pub duration: Duration,
 }
 
+/// Convenience type alias for `DailyStudySummary`.
+pub type DailySummary = DailyStudySummary;
+
 /// Statistics for study streak tracking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreakStats {
