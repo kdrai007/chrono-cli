@@ -109,8 +109,8 @@ sync_on_exit = false
 
 ```json
 {
-  "text": "00:24:12 (Math)",
-  "tooltip": "Calculus Problem Set 4\nProject: Mathematics\nStarted: 2026-10-04 14:15:00 UTC\nElapsed: 00:24:12\nTags: #Calculus #Homework",
+  "text": "Calculus Problem Set 4 [Mathematics] (00:24:12)",
+  "tooltip": "Calculus Problem Set 4\nProject: Mathematics\nStarted: 14:15:00\nElapsed: 00:24:12\nTags: #Calculus #Homework",
   "class": "running",
   "alt": "running"
 }
