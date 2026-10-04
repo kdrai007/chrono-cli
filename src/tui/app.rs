@@ -442,10 +442,15 @@ impl App {
                 .collect();
         }
 
+        self.active_entry = db.get_active_entry().ok().flatten();
         if let Some(entry) = &self.active_entry {
             if let Some(pid) = entry.project_id {
                 self.active_project_name = self.projects.get(&pid).map(|p| p.name.clone());
+            } else {
+                self.active_project_name = None;
             }
+        } else {
+            self.active_project_name = None;
         }
 
         self.refresh_history(db);
@@ -516,6 +521,10 @@ impl App {
         if let Some(id) = target.id {
             match db.delete_entry(id) {
                 Ok(()) => {
+                    if self.active_entry.as_ref().and_then(|a| a.id) == Some(id) {
+                        self.active_entry = None;
+                        self.active_project_name = None;
+                    }
                     self.set_status_message(format!("Deleted entry: {}", target.description));
                 }
                 Err(e) => {

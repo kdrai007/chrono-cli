@@ -246,8 +246,11 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     if let Some((msg, _)) = &app.status_message {
         let max_msg_len = if inner.width < 90 { 20 } else { 40 };
-        let display_msg = if msg.len() > max_msg_len {
-            format!("{}...", &msg[..max_msg_len.saturating_sub(3)])
+        let char_count = msg.chars().count();
+        let display_msg = if char_count > max_msg_len {
+            let limit = max_msg_len.saturating_sub(3);
+            let prefix: String = msg.chars().take(limit).collect();
+            format!("{prefix}...")
         } else {
             msg.clone()
         };

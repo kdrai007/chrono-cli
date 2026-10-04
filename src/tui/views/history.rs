@@ -226,7 +226,42 @@ fn render_timesheet_table(
     let mut rows: Vec<Row> = Vec::new();
     let mut current_group: Option<DateGroup> = None;
 
-    for (idx, entry) in filtered_entries.iter().enumerate() {
+    let total = filtered_entries.len();
+    let capacity = (area.height.saturating_sub(4) as usize).max(4);
+    let (start_idx, end_idx) = if total <= capacity {
+        (0, total)
+    } else {
+        let half = capacity / 2;
+        let start = if app.selected_history_index < half {
+            0
+        } else if app.selected_history_index + (capacity - half) >= total {
+            total.saturating_sub(capacity)
+        } else {
+            app.selected_history_index - half
+        };
+        let end = (start + capacity).min(total);
+        (start, end)
+    };
+
+    if start_idx > 0 {
+        rows.push(
+            Row::new([
+                Cell::from(Span::styled(
+                    format!("  ▲ ... {} earlier records ...", start_idx),
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+            ])
+            .style(Style::default().fg(Color::DarkGray)),
+        );
+    }
+
+    for (rel_idx, entry) in filtered_entries[start_idx..end_idx].iter().enumerate() {
+        let idx = start_idx + rel_idx;
         let entry_date = entry.start_time.with_timezone(&Local).date_naive();
         let group = DateGroup::from_date(entry_date, today);
 
@@ -330,6 +365,23 @@ fn render_timesheet_table(
                 Cell::from(sync_span),
             ])
             .style(row_style),
+        );
+    }
+
+    if end_idx < total {
+        rows.push(
+            Row::new([
+                Cell::from(Span::styled(
+                    format!("  ▼ ... {} more records below ...", total - end_idx),
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(""),
+            ])
+            .style(Style::default().fg(Color::DarkGray)),
         );
     }
 
