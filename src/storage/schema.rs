@@ -61,6 +61,7 @@ pub const CREATE_INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_projects_clockify_id ON projects(clockify_id);",
     "CREATE INDEX IF NOT EXISTS idx_tags_clockify_id ON tags(clockify_id);",
     "CREATE INDEX IF NOT EXISTS idx_entry_tags_tag_id ON entry_tags(tag_id);",
+    "CREATE INDEX IF NOT EXISTS idx_time_entries_active ON time_entries(start_time) WHERE end_time IS NULL;",
 ];
 
 /// Applies schema migrations up to `CURRENT_SCHEMA_VERSION`.
