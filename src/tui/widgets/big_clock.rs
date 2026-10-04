@@ -12,7 +12,7 @@ use crate::domain::format_duration_hms;
 
 /// A 3-row tall digital clock widget rendering block ASCII glyphs.
 ///
-/// If terminal area is narrow (< 45 cols or < 6 rows for clock), it falls
+/// If terminal area is narrow (< 35 cols or < 3 rows for clock), it falls
 /// back to a centered styled single-line text representation.
 #[derive(Debug, Clone)]
 pub struct BigClock<'a> {

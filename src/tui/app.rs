@@ -270,11 +270,11 @@ impl App {
                 };
 
                 if entry.entry_mode == EntryMode::PomodoroWork {
+                    let completed = self.pomodoro.current_phase();
                     let next = self.pomodoro.next_phase();
-                    let _ = self.notifications.send(&NotificationEvent::Custom {
-                        title: "Pomodoro Session Complete".to_string(),
-                        body: format!("Finished {desc}! Up next: {next}"),
-                    });
+                    let _ = self
+                        .notifications
+                        .notify_pomodoro_phase_change(&completed, &next);
                 } else {
                     let elapsed = entry
                         .format_duration()
