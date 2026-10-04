@@ -38,6 +38,12 @@ pub fn render(app: &App, frame: &mut Frame) {
         crate::tui::views::history::render_entry_form_modal(app, frame, false);
     } else if app.show_filter_modal {
         crate::tui::views::history::render_filter_modal(app, frame);
+    } else if app.show_delete_project_modal {
+        crate::tui::views::projects::render_delete_project_modal(app, frame);
+    } else if app.show_add_project_modal {
+        crate::tui::views::projects::render_project_form_modal(app, frame, true);
+    } else if app.show_edit_project_modal {
+        crate::tui::views::projects::render_project_form_modal(app, frame, false);
     }
 }
 
@@ -165,7 +171,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
     match app.current_tab {
         Tab::Timer => render_timer_tab(app, frame, area),
         Tab::History => render_history_tab(app, frame, area),
-        Tab::Projects => render_projects_tab(frame, area),
+        Tab::Projects => render_projects_tab(app, frame, area),
         Tab::Analytics => render_analytics_tab(frame, area),
     }
 }
@@ -180,31 +186,9 @@ pub fn render_history_tab(app: &App, frame: &mut Frame, area: Rect) {
     crate::tui::views::history::render_history_view(app, frame, area);
 }
 
-/// Renders Tab 3 (Projects placeholder).
-fn render_projects_tab(frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(" Course & Project Management ");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let text = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Courses & Projects", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  Organize study hours by academic subjects and track weekly study hour targets."),
-        ]),
-        Line::from(vec![
-            Span::styled("  (Project list view, target hours configuration, and color tags will be enabled in Tab 3.)", Style::default().fg(Color::DarkGray)),
-        ]),
-    ];
-
-    let p = Paragraph::new(text);
-    frame.render_widget(p, inner);
+/// Renders Tab 3 (Projects & Course Targets view).
+pub fn render_projects_tab(app: &App, frame: &mut Frame, area: Rect) {
+    crate::tui::views::projects::render_projects_view(app, frame, area);
 }
 
 /// Renders Tab 4 (Analytics placeholder).
@@ -283,8 +267,20 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         ("[q]", " Quit"),
     ];
 
+    let projects_hints: &[(&str, &str)] = &[
+        ("[a]", " Add  "),
+        ("[e]", " Edit  "),
+        ("[x]", " Archive  "),
+        ("[d]", " Del  "),
+        ("[j/k]", " Nav  "),
+        ("[1-4]", " Tabs  "),
+        ("[?]", " Help  "),
+        ("[q]", " Quit"),
+    ];
+
     let hints = match app.current_tab {
         Tab::History => history_hints,
+        Tab::Projects => projects_hints,
         _ => default_hints,
     };
 

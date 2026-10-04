@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::AppConfig;
-use crate::domain::{EntryMode, PomodoroStateMachine, Project, Tag, TimeEntry};
+use crate::domain::{
+    EntryMode, PomodoroStateMachine, Project, ProjectTargetProgress, Tag, TimeEntry,
+};
 use crate::notify::{NotificationEvent, NotificationService};
 use crate::storage::Database;
 
@@ -259,6 +261,61 @@ impl EntryForm {
     }
 }
 
+/// Form state for creating or editing projects and course targets via modal dialogs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectForm {
+    /// Local database ID if editing an existing project.
+    pub id: Option<i64>,
+    /// Project display name.
+    pub name: String,
+    /// Hex color code for UI badges (e.g. "#3498db").
+    pub color: String,
+    /// Weekly study target hours (e.g. "10.0" or "0").
+    pub target_hours: String,
+    /// Currently focused form field (0 = name, 1 = color, 2 = target_hours).
+    pub active_field: usize,
+}
+
+impl Default for ProjectForm {
+    fn default() -> Self {
+        Self {
+            id: None,
+            name: String::new(),
+            color: crate::domain::DEFAULT_PROJECT_COLOR.to_string(),
+            target_hours: "10.0".to_string(),
+            active_field: 0,
+        }
+    }
+}
+
+impl ProjectForm {
+    /// Creates a `ProjectForm` pre-populated from an existing `Project`.
+    pub fn from_project(project: &Project) -> Self {
+        let target_str = if project.target_hours_week > 0.0 {
+            format!("{:.1}", project.target_hours_week)
+        } else {
+            String::new()
+        };
+
+        Self {
+            id: project.id,
+            name: project.name.clone(),
+            color: project.color.clone(),
+            target_hours: target_str,
+            active_field: 0,
+        }
+    }
+
+    /// Returns a mutable reference to the string buffer for the currently focused field.
+    pub fn active_field_mut(&mut self) -> &mut String {
+        match self.active_field {
+            0 => &mut self.name,
+            1 => &mut self.color,
+            _ => &mut self.target_hours,
+        }
+    }
+}
+
 /// Central application state for the TUI.
 #[derive(Debug)]
 pub struct App {
@@ -304,6 +361,20 @@ pub struct App {
     pub filter_input: String,
     /// Cached map of projects keyed by project database ID.
     pub projects: HashMap<i64, Project>,
+    /// Course and project records loaded from the database.
+    pub project_list: Vec<Project>,
+    /// Index of the selected project in the Projects view table.
+    pub selected_project_index: usize,
+    /// Whether the add project modal dialog is displayed.
+    pub show_add_project_modal: bool,
+    /// Whether the edit project modal dialog is displayed.
+    pub show_edit_project_modal: bool,
+    /// Whether the delete project confirmation modal dialog is displayed.
+    pub show_delete_project_modal: bool,
+    /// Form data for project creation and editing.
+    pub project_form: ProjectForm,
+    /// Cached weekly project target progress metrics keyed by project database ID.
+    pub project_progress: HashMap<i64, ProjectTargetProgress>,
 }
 
 impl App {
@@ -334,6 +405,13 @@ impl App {
             history_filter: None,
             filter_input: String::new(),
             projects: HashMap::new(),
+            project_list: Vec::new(),
+            selected_project_index: 0,
+            show_add_project_modal: false,
+            show_edit_project_modal: false,
+            show_delete_project_modal: false,
+            project_form: ProjectForm::default(),
+            project_progress: HashMap::new(),
         }
     }
 
@@ -363,6 +441,18 @@ impl App {
     /// Builder method to attach cached projects.
     pub fn with_projects(mut self, projects: HashMap<i64, Project>) -> Self {
         self.projects = projects;
+        self
+    }
+
+    /// Builder method to attach a project list.
+    pub fn with_project_list(mut self, list: Vec<Project>) -> Self {
+        self.project_list = list;
+        self
+    }
+
+    /// Builder method to attach cached project target progress metrics.
+    pub fn with_project_progress(mut self, progress: HashMap<i64, ProjectTargetProgress>) -> Self {
+        self.project_progress = progress;
         self
     }
 
@@ -454,6 +544,7 @@ impl App {
         }
 
         self.refresh_history(db);
+        self.refresh_projects(db);
     }
 
     /// Refreshes all historical time entries and cached projects from the database.
@@ -475,6 +566,39 @@ impl App {
             self.projects = projects
                 .into_iter()
                 .filter_map(|p| p.id.map(|id| (id, p)))
+                .collect();
+        }
+
+        self.refresh_projects(db);
+    }
+
+    /// Refreshes projects and weekly study targets progress from the database.
+    pub fn refresh_projects(&mut self, db: &Database) {
+        if let Ok(projects) = db.list_projects(true) {
+            self.project_list = projects;
+            let count = self.project_list.len();
+            if count > 0 && self.selected_project_index >= count {
+                self.selected_project_index = count - 1;
+            } else if count == 0 {
+                self.selected_project_index = 0;
+            }
+        }
+
+        self.projects = self
+            .project_list
+            .iter()
+            .filter_map(|p| p.id.map(|id| (id, p.clone())))
+            .collect();
+
+        let today = chrono::Local::now().date_naive();
+        let days_from_monday = today.weekday().num_days_from_monday();
+        let monday = today - chrono::Duration::days(days_from_monday as i64);
+        let sunday = monday + chrono::Duration::days(6);
+
+        if let Ok(progress_list) = db.get_weekly_project_progress(monday, sunday) {
+            self.project_progress = progress_list
+                .into_iter()
+                .map(|p| (p.project_id, p))
                 .collect();
         }
     }
@@ -507,6 +631,26 @@ impl App {
         if self.selected_history_index > 0 {
             self.selected_history_index -= 1;
         }
+    }
+
+    /// Moves the projects list selection down.
+    pub fn select_next_project(&mut self) {
+        let count = self.project_list.len();
+        if count > 0 && self.selected_project_index + 1 < count {
+            self.selected_project_index += 1;
+        }
+    }
+
+    /// Moves the projects list selection up.
+    pub fn select_prev_project(&mut self) {
+        if self.selected_project_index > 0 {
+            self.selected_project_index -= 1;
+        }
+    }
+
+    /// Returns a reference to the currently selected project, if any.
+    pub fn selected_project(&self) -> Option<&Project> {
+        self.project_list.get(self.selected_project_index)
     }
 
     /// Deletes the currently selected history entry from the database.
@@ -616,12 +760,42 @@ impl App {
         self.show_filter_modal = true;
     }
 
+    /// Opens the project creation modal dialog.
+    pub fn open_add_project_modal(&mut self) {
+        self.project_form = ProjectForm::default();
+        self.show_add_project_modal = true;
+        self.show_edit_project_modal = false;
+        self.show_delete_project_modal = false;
+    }
+
+    /// Opens the project editing modal dialog pre-populated with selected project details.
+    pub fn open_edit_project_modal(&mut self) {
+        if let Some(project) = self.selected_project() {
+            self.project_form = ProjectForm::from_project(project);
+            self.show_edit_project_modal = true;
+            self.show_add_project_modal = false;
+            self.show_delete_project_modal = false;
+        }
+    }
+
+    /// Opens the project deletion confirmation modal dialog for the selected project.
+    pub fn open_delete_project_modal(&mut self) {
+        if self.selected_project().is_some() {
+            self.show_delete_project_modal = true;
+            self.show_add_project_modal = false;
+            self.show_edit_project_modal = false;
+        }
+    }
+
     /// Closes all active modal dialogs.
     pub fn close_modal(&mut self) {
         self.show_new_entry_modal = false;
         self.show_edit_entry_modal = false;
         self.show_delete_entry_modal = false;
         self.show_filter_modal = false;
+        self.show_add_project_modal = false;
+        self.show_edit_project_modal = false;
+        self.show_delete_project_modal = false;
     }
 
     /// Returns `true` if any popup or modal dialog is currently active.
@@ -631,6 +805,149 @@ impl App {
             || self.show_edit_entry_modal
             || self.show_delete_entry_modal
             || self.show_filter_modal
+            || self.show_add_project_modal
+            || self.show_edit_project_modal
+            || self.show_delete_project_modal
+    }
+
+    /// Saves the project form (creating a new project or updating an existing one) into SQLite.
+    pub fn save_project_form(&mut self, db: &mut Database) -> Result<(), String> {
+        let name = self.project_form.name.trim();
+        if name.is_empty() {
+            return Err("Project name cannot be empty".to_string());
+        }
+
+        let color = if self.project_form.color.trim().is_empty() {
+            crate::domain::DEFAULT_PROJECT_COLOR.to_string()
+        } else {
+            let mut c = self.project_form.color.trim().to_string();
+            if !c.starts_with('#') {
+                c = format!("#{c}");
+            }
+            c
+        };
+
+        let target_hours = if self.project_form.target_hours.trim().is_empty() {
+            0.0
+        } else {
+            self.project_form
+                .target_hours
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| "Target hours must be a valid number (e.g. 10.0)".to_string())?
+        };
+
+        if target_hours.is_nan() || target_hours < 0.0 {
+            return Err("Weekly target hours cannot be negative or NaN".to_string());
+        }
+
+        if self.show_edit_project_modal {
+            if let Some(id) = self.project_form.id {
+                match db.get_project(id) {
+                    Ok(Some(mut existing)) => {
+                        if existing.name != name {
+                            if let Ok(Some(other)) = db.get_project_by_name(name) {
+                                if other.id != Some(id) {
+                                    return Err(format!("Project '{name}' already exists"));
+                                }
+                            }
+                        }
+                        existing.name = name.to_string();
+                        existing.color = color;
+                        existing.target_hours_week = target_hours;
+                        if let Err(e) = existing.validate() {
+                            return Err(format!("Validation error: {e}"));
+                        }
+                        if let Err(e) = db.update_project(&existing) {
+                            return Err(format!("Failed to update project: {e}"));
+                        }
+                        self.set_status_message(format!("Updated project: {name}"));
+                    }
+                    Ok(None) => return Err("Project to edit not found in database".to_string()),
+                    Err(e) => return Err(format!("DB error querying project: {e}")),
+                }
+            } else {
+                return Err("No project selected for editing".to_string());
+            }
+        } else {
+            if let Ok(Some(_)) = db.get_project_by_name(name) {
+                return Err(format!("Project '{name}' already exists"));
+            }
+            let project = Project::new(name)
+                .map_err(|e| format!("Invalid project name: {e}"))?
+                .with_color(color)
+                .with_target_hours_week(target_hours);
+            if let Err(e) = project.validate() {
+                return Err(format!("Validation error: {e}"));
+            }
+            if let Err(e) = db.create_project(&project) {
+                return Err(format!("Failed to create project: {e}"));
+            }
+            self.set_status_message(format!("Created project: {name}"));
+        }
+
+        self.close_modal();
+        self.refresh_projects(db);
+        self.refresh_history(db);
+        self.refresh_today_entries(db);
+        Ok(())
+    }
+
+    /// Toggles the archive status of the currently selected project in SQLite.
+    pub fn toggle_archive_selected_project(&mut self, db: &mut Database) {
+        if self.project_list.is_empty() || self.selected_project_index >= self.project_list.len() {
+            return;
+        }
+
+        let mut target = self.project_list[self.selected_project_index].clone();
+        let new_archived = !target.archived;
+        target.archived = new_archived;
+
+        match db.update_project(&target) {
+            Ok(()) => {
+                let status = if new_archived {
+                    "Archived"
+                } else {
+                    "Unarchived"
+                };
+                self.set_status_message(format!("{status} project: {}", target.name));
+            }
+            Err(e) => {
+                self.set_status_message(format!("DB error updating project: {e}"));
+            }
+        }
+
+        self.refresh_projects(db);
+        self.refresh_history(db);
+        self.refresh_today_entries(db);
+    }
+
+    /// Deletes the currently selected project from the database.
+    pub fn delete_selected_project(&mut self, db: &mut Database) {
+        if self.project_list.is_empty() || self.selected_project_index >= self.project_list.len() {
+            self.show_delete_project_modal = false;
+            return;
+        }
+
+        let target = self.project_list[self.selected_project_index].clone();
+        if let Some(id) = target.id {
+            match db.delete_project(id) {
+                Ok(()) => {
+                    if self.active_project_name.as_deref() == Some(&target.name) {
+                        self.active_project_name = None;
+                    }
+                    self.set_status_message(format!("Deleted project: {}", target.name));
+                }
+                Err(e) => {
+                    self.set_status_message(format!("DB error deleting project: {e}"));
+                }
+            }
+        }
+
+        self.show_delete_project_modal = false;
+        self.refresh_projects(db);
+        self.refresh_history(db);
+        self.refresh_today_entries(db);
     }
 
     /// Saves the current entry form (creating a new entry or updating an existing entry) into SQLite.
@@ -959,6 +1276,23 @@ impl App {
             return;
         }
 
+        if self.show_delete_project_modal {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    if let Some(db_ref) = db {
+                        self.delete_selected_project(db_ref);
+                    } else {
+                        self.show_delete_project_modal = false;
+                    }
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.show_delete_project_modal = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         if self.show_new_entry_modal || self.show_edit_entry_modal {
             match key.code {
                 KeyCode::Esc => {
@@ -984,6 +1318,37 @@ impl App {
                 }
                 KeyCode::Char(c) => {
                     self.entry_form.active_field_mut().push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        if self.show_add_project_modal || self.show_edit_project_modal {
+            match key.code {
+                KeyCode::Esc => {
+                    self.close_modal();
+                }
+                KeyCode::Enter => {
+                    if let Some(db_ref) = db {
+                        if let Err(e) = self.save_project_form(db_ref) {
+                            self.set_status_message(e);
+                        }
+                    } else {
+                        self.close_modal();
+                    }
+                }
+                KeyCode::Tab | KeyCode::Down => {
+                    self.project_form.active_field = (self.project_form.active_field + 1) % 3;
+                }
+                KeyCode::BackTab | KeyCode::Up => {
+                    self.project_form.active_field = (self.project_form.active_field + 2) % 3;
+                }
+                KeyCode::Backspace => {
+                    self.project_form.active_field_mut().pop();
+                }
+                KeyCode::Char(c) => {
+                    self.project_form.active_field_mut().push(c);
                 }
                 _ => {}
             }
@@ -1108,7 +1473,33 @@ impl App {
                 }
                 _ => {}
             },
-            Tab::Projects | Tab::Analytics => {}
+            Tab::Projects => match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.select_next_project();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.select_prev_project();
+                }
+                KeyCode::Char('a')
+                | KeyCode::Char('A')
+                | KeyCode::Char('n')
+                | KeyCode::Char('N') => {
+                    self.open_add_project_modal();
+                }
+                KeyCode::Char('e') | KeyCode::Char('E') => {
+                    self.open_edit_project_modal();
+                }
+                KeyCode::Char('x') | KeyCode::Char('X') => {
+                    if let Some(db_ref) = db {
+                        self.toggle_archive_selected_project(db_ref);
+                    }
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    self.open_delete_project_modal();
+                }
+                _ => {}
+            },
+            Tab::Analytics => {}
         }
     }
 }
