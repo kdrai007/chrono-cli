@@ -9,6 +9,7 @@ use ratatui::Frame;
 
 use crate::domain::{format_duration_hms, EntryMode};
 use crate::tui::app::{App, Tab};
+use crate::tui::widgets::modal::centered_rect;
 
 /// Renders the root TUI shell layout for the given application state.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -29,6 +30,14 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     if app.show_help {
         render_help_modal(frame);
+    } else if app.show_delete_entry_modal {
+        crate::tui::views::history::render_delete_modal(app, frame);
+    } else if app.show_new_entry_modal {
+        crate::tui::views::history::render_entry_form_modal(app, frame, true);
+    } else if app.show_edit_entry_modal {
+        crate::tui::views::history::render_entry_form_modal(app, frame, false);
+    } else if app.show_filter_modal {
+        crate::tui::views::history::render_filter_modal(app, frame);
     }
 }
 
@@ -155,7 +164,7 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect) {
 fn render_body(app: &App, frame: &mut Frame, area: Rect) {
     match app.current_tab {
         Tab::Timer => render_timer_tab(app, frame, area),
-        Tab::History => render_history_tab(frame, area),
+        Tab::History => render_history_tab(app, frame, area),
         Tab::Projects => render_projects_tab(frame, area),
         Tab::Analytics => render_analytics_tab(frame, area),
     }
@@ -166,35 +175,9 @@ pub fn render_timer_tab(app: &App, frame: &mut Frame, area: Rect) {
     crate::tui::views::timer::render_timer_view(app, frame, area);
 }
 
-/// Renders Tab 2 (History placeholder).
-fn render_history_tab(frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(" Study History ");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let text = vec![
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "  Study Session History & Logs",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )]),
-        Line::from(""),
-        Line::from(vec![Span::raw(
-            "  View past study sessions, inspect tags, filter by date, or delete entries.",
-        )]),
-        Line::from(vec![Span::styled(
-            "  (Full table navigation, date filtering, and entry editor will be enabled in Tab 2.)",
-            Style::default().fg(Color::DarkGray),
-        )]),
-    ];
-
-    let p = Paragraph::new(text);
-    frame.render_widget(p, inner);
+/// Renders Tab 2 (History Timesheet view).
+pub fn render_history_tab(app: &App, frame: &mut Frame, area: Rect) {
+    crate::tui::views::history::render_history_view(app, frame, area);
 }
 
 /// Renders Tab 3 (Projects placeholder).
@@ -278,7 +261,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         spans.push(Span::styled("  │  ", Style::default().fg(Color::DarkGray)));
     }
 
-    let hints = [
+    let default_hints: &[(&str, &str)] = &[
         ("[Space]", " Timer  "),
         ("[p]", " Pomo  "),
         ("[1-4]", " Tabs  "),
@@ -287,39 +270,33 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         ("[q]", " Quit"),
     ];
 
+    let history_hints: &[(&str, &str)] = &[
+        ("[n]", " New  "),
+        ("[e]", " Edit  "),
+        ("[d]", " Del  "),
+        ("[/]", " Filter  "),
+        ("[1-4]", " Tabs  "),
+        ("[?]", " Help  "),
+        ("[q]", " Quit"),
+    ];
+
+    let hints = match app.current_tab {
+        Tab::History => history_hints,
+        _ => default_hints,
+    };
+
     for (key, label) in hints {
         spans.push(Span::styled(
-            key,
+            *key,
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(label, Style::default().fg(Color::Gray)));
+        spans.push(Span::styled(*label, Style::default().fg(Color::Gray)));
     }
 
     let paragraph = Paragraph::new(Line::from(spans)).alignment(Alignment::Left);
     frame.render_widget(paragraph, inner);
-}
-
-/// Calculates a centered rectangle with given width and height percentages.
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 /// Renders the centered modal help reference sheet.

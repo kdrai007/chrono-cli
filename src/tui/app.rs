@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::AppConfig;
-use crate::domain::{EntryMode, PomodoroStateMachine, Project, TimeEntry};
+use crate::domain::{EntryMode, PomodoroStateMachine, Project, Tag, TimeEntry};
 use crate::notify::{NotificationEvent, NotificationService};
 use crate::storage::Database;
 
@@ -77,6 +77,188 @@ impl Tab {
     }
 }
 
+/// Parses a duration string or time range into a `chrono::Duration`.
+///
+/// Supported formats:
+/// - `"1h 30m"`, `"1h"`, `"45m"`, `"30s"`, `"1.5h"`
+/// - Plain number `"45"` (treated as minutes)
+/// - Clock format `"01:30:00"` or `"01:30"`
+/// - Range format `"14:00 - 15:30"` or `"14:00-15:30"`
+pub fn parse_duration_input(s: &str) -> chrono::Duration {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return chrono::Duration::minutes(30);
+    }
+
+    // Check if it's a range like "14:00 - 15:30" or "14:00-15:30"
+    if let Some((start_s, end_s)) = trimmed.split_once('-') {
+        let start_parts: Vec<&str> = start_s.trim().split(':').collect();
+        let end_parts: Vec<&str> = end_s.trim().split(':').collect();
+        if start_parts.len() >= 2 && end_parts.len() >= 2 {
+            if let (Ok(sh), Ok(sm), Ok(eh), Ok(em)) = (
+                start_parts[0].parse::<i64>(),
+                start_parts[1].parse::<i64>(),
+                end_parts[0].parse::<i64>(),
+                end_parts[1].parse::<i64>(),
+            ) {
+                let start_mins = sh * 60 + sm;
+                let mut end_mins = eh * 60 + em;
+                if end_mins < start_mins {
+                    end_mins += 24 * 60; // spanned midnight
+                }
+                let diff = (end_mins - start_mins).max(0);
+                return chrono::Duration::minutes(diff);
+            }
+        }
+    }
+
+    // Check "HH:MM:SS" or "HH:MM"
+    if trimmed.contains(':') {
+        let parts: Vec<&str> = trimmed.split(':').collect();
+        if parts.len() == 3 {
+            if let (Ok(h), Ok(m), Ok(sec)) = (
+                parts[0].parse::<i64>(),
+                parts[1].parse::<i64>(),
+                parts[2].parse::<i64>(),
+            ) {
+                return chrono::Duration::hours(h)
+                    + chrono::Duration::minutes(m)
+                    + chrono::Duration::seconds(sec);
+            }
+        } else if parts.len() == 2 {
+            if let (Ok(h), Ok(m)) = (parts[0].parse::<i64>(), parts[1].parse::<i64>()) {
+                return chrono::Duration::hours(h) + chrono::Duration::minutes(m);
+            }
+        }
+    }
+
+    // Check decimal hours like "1.5h"
+    if (trimmed.ends_with('h') || trimmed.ends_with('H')) && trimmed.contains('.') {
+        let num_str = trimmed[..trimmed.len() - 1].trim();
+        if let Ok(hours_f) = num_str.parse::<f64>() {
+            let total_secs = (hours_f * 3600.0).max(0.0) as i64;
+            return chrono::Duration::seconds(total_secs);
+        }
+    }
+
+    // Token based: "1h 30m"
+    let mut total_secs: i64 = 0;
+    let mut num_buf = String::new();
+    let mut has_units = false;
+
+    for c in trimmed.chars() {
+        if c.is_ascii_digit() {
+            num_buf.push(c);
+        } else if c.is_whitespace() {
+            // spacer
+        } else {
+            let unit = c.to_ascii_lowercase();
+            if let Ok(n) = num_buf.parse::<i64>() {
+                match unit {
+                    'h' => {
+                        total_secs += n * 3600;
+                        has_units = true;
+                    }
+                    'm' => {
+                        total_secs += n * 60;
+                        has_units = true;
+                    }
+                    's' => {
+                        total_secs += n;
+                        has_units = true;
+                    }
+                    _ => {}
+                }
+            }
+            num_buf.clear();
+        }
+    }
+
+    if has_units {
+        return chrono::Duration::seconds(total_secs.max(0));
+    }
+
+    // If pure number like "45", treat as minutes
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return chrono::Duration::minutes(n.max(0));
+    }
+
+    chrono::Duration::minutes(30)
+}
+
+/// Form state for creating or editing time entries via modal dialogs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryForm {
+    /// Local database ID if editing an existing entry.
+    pub id: Option<i64>,
+    /// Task description or study session title.
+    pub description: String,
+    /// Associated project name.
+    pub project: String,
+    /// Duration or time string (e.g. "1h 15m", "45m", "90", "14:00 - 15:30").
+    pub duration: String,
+    /// Comma-separated tag names (e.g. "homework, math").
+    pub tags: String,
+    /// Currently focused form field (0 = description, 1 = project, 2 = duration, 3 = tags).
+    pub active_field: usize,
+}
+
+impl Default for EntryForm {
+    fn default() -> Self {
+        Self {
+            id: None,
+            description: String::new(),
+            project: String::new(),
+            duration: "30m".to_string(),
+            tags: String::new(),
+            active_field: 0,
+        }
+    }
+}
+
+impl EntryForm {
+    /// Creates an `EntryForm` pre-populated from an existing `TimeEntry`.
+    pub fn from_entry(entry: &TimeEntry, projects: &HashMap<i64, Project>) -> Self {
+        let project_name = entry
+            .project_id
+            .and_then(|pid| projects.get(&pid))
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+
+        let duration_str = if let Some(d) = entry.duration() {
+            crate::domain::format_duration_human(&d)
+        } else {
+            "30m".to_string()
+        };
+
+        let tags_str = entry
+            .tags
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        Self {
+            id: entry.id,
+            description: entry.description.clone(),
+            project: project_name,
+            duration: duration_str,
+            tags: tags_str,
+            active_field: 0,
+        }
+    }
+
+    /// Returns a mutable reference to the string buffer for the currently focused field.
+    pub fn active_field_mut(&mut self) -> &mut String {
+        match self.active_field {
+            0 => &mut self.description,
+            1 => &mut self.project,
+            2 => &mut self.duration,
+            _ => &mut self.tags,
+        }
+    }
+}
+
 /// Central application state for the TUI.
 #[derive(Debug)]
 pub struct App {
@@ -102,6 +284,24 @@ pub struct App {
     pub today_entries: Vec<TimeEntry>,
     /// Index of the selected recent entry in the Timer view list.
     pub selected_recent_index: usize,
+    /// Historical study sessions loaded from the database.
+    pub history_entries: Vec<TimeEntry>,
+    /// Index of the selected entry in the History timesheet table.
+    pub selected_history_index: usize,
+    /// Whether the manual entry creation modal dialog is displayed.
+    pub show_new_entry_modal: bool,
+    /// Whether the entry editing modal dialog is displayed.
+    pub show_edit_entry_modal: bool,
+    /// Whether the delete confirmation modal dialog is displayed.
+    pub show_delete_entry_modal: bool,
+    /// Whether the history search/filter modal dialog is displayed.
+    pub show_filter_modal: bool,
+    /// Form data for manual entry creation and editing.
+    pub entry_form: EntryForm,
+    /// Optional active text filter applied to historical study sessions.
+    pub history_filter: Option<String>,
+    /// Buffer holding current text input for the filter prompt.
+    pub filter_input: String,
     /// Cached map of projects keyed by project database ID.
     pub projects: HashMap<i64, Project>,
 }
@@ -124,6 +324,15 @@ impl App {
             config,
             today_entries: Vec::new(),
             selected_recent_index: 0,
+            history_entries: Vec::new(),
+            selected_history_index: 0,
+            show_new_entry_modal: false,
+            show_edit_entry_modal: false,
+            show_delete_entry_modal: false,
+            show_filter_modal: false,
+            entry_form: EntryForm::default(),
+            history_filter: None,
+            filter_input: String::new(),
             projects: HashMap::new(),
         }
     }
@@ -142,6 +351,12 @@ impl App {
     /// Builder method to attach today's entries.
     pub fn with_today_entries(mut self, entries: Vec<TimeEntry>) -> Self {
         self.today_entries = entries;
+        self
+    }
+
+    /// Builder method to attach history entries.
+    pub fn with_history_entries(mut self, entries: Vec<TimeEntry>) -> Self {
+        self.history_entries = entries;
         self
     }
 
@@ -234,6 +449,29 @@ impl App {
         }
     }
 
+    /// Refreshes all historical time entries and cached projects from the database.
+    pub fn refresh_history(&mut self, db: &Database) {
+        let start_dt = DateTime::<Utc>::UNIX_EPOCH;
+        let end_dt = Utc::now() + chrono::Duration::days(36500);
+
+        if let Ok(entries) = db.get_entries(start_dt, end_dt) {
+            self.history_entries = entries;
+            let count = self.filtered_history_entries().len();
+            if count > 0 && self.selected_history_index >= count {
+                self.selected_history_index = count - 1;
+            } else if count == 0 {
+                self.selected_history_index = 0;
+            }
+        }
+
+        if let Ok(projects) = db.list_projects(true) {
+            self.projects = projects
+                .into_iter()
+                .filter_map(|p| p.id.map(|id| (id, p)))
+                .collect();
+        }
+    }
+
     /// Moves the recent sessions list selection down.
     pub fn select_next_recent(&mut self) {
         let count = self.today_entries.len().min(5);
@@ -247,6 +485,229 @@ impl App {
         if self.selected_recent_index > 0 {
             self.selected_recent_index -= 1;
         }
+    }
+
+    /// Moves the history timesheet selection down.
+    pub fn select_next_history(&mut self) {
+        let count = self.filtered_history_entries().len();
+        if count > 0 && self.selected_history_index + 1 < count {
+            self.selected_history_index += 1;
+        }
+    }
+
+    /// Moves the history timesheet selection up.
+    pub fn select_prev_history(&mut self) {
+        if self.selected_history_index > 0 {
+            self.selected_history_index -= 1;
+        }
+    }
+
+    /// Deletes the currently selected history entry from the database.
+    pub fn delete_selected_history_entry(&mut self, db: &mut Database) {
+        let entries = self.filtered_history_entries();
+        if entries.is_empty() || self.selected_history_index >= entries.len() {
+            self.show_delete_entry_modal = false;
+            return;
+        }
+
+        let target = entries[self.selected_history_index].clone();
+        if let Some(id) = target.id {
+            match db.delete_entry(id) {
+                Ok(()) => {
+                    self.set_status_message(format!("Deleted entry: {}", target.description));
+                }
+                Err(e) => {
+                    self.set_status_message(format!("DB error deleting entry: {e}"));
+                }
+            }
+        }
+
+        self.show_delete_entry_modal = false;
+        self.refresh_history(db);
+        self.refresh_today_entries(db);
+    }
+
+    /// Returns historical entries matching the active filter, or all entries if no filter is set.
+    pub fn filtered_history_entries(&self) -> Vec<&TimeEntry> {
+        match &self.history_filter {
+            Some(query) if !query.trim().is_empty() => {
+                let q = query.trim().to_lowercase();
+                self.history_entries
+                    .iter()
+                    .filter(|e| {
+                        if e.description.to_lowercase().contains(&q) {
+                            return true;
+                        }
+                        if let Some(pid) = e.project_id {
+                            if let Some(p) = self.projects.get(&pid) {
+                                if p.name.to_lowercase().contains(&q) {
+                                    return true;
+                                }
+                            }
+                        }
+                        if e.tags.iter().any(|t| t.name.to_lowercase().contains(&q)) {
+                            return true;
+                        }
+                        false
+                    })
+                    .collect()
+            }
+            _ => self.history_entries.iter().collect(),
+        }
+    }
+
+    /// Returns a reference to the currently selected historical time entry, if any.
+    pub fn selected_history_entry(&self) -> Option<&TimeEntry> {
+        let filtered = self.filtered_history_entries();
+        filtered.get(self.selected_history_index).copied()
+    }
+
+    /// Opens the manual new entry creation modal dialog.
+    pub fn open_new_entry_modal(&mut self) {
+        self.entry_form = EntryForm::default();
+        self.show_new_entry_modal = true;
+        self.show_edit_entry_modal = false;
+        self.show_delete_entry_modal = false;
+        self.show_filter_modal = false;
+    }
+
+    /// Opens the entry editing modal dialog pre-populated with selected entry details.
+    pub fn open_edit_entry_modal(&mut self) {
+        let entries = self.filtered_history_entries();
+        if entries.is_empty() || self.selected_history_index >= entries.len() {
+            return;
+        }
+
+        let entry = entries[self.selected_history_index];
+        self.entry_form = EntryForm::from_entry(entry, &self.projects);
+        self.show_edit_entry_modal = true;
+        self.show_new_entry_modal = false;
+        self.show_delete_entry_modal = false;
+        self.show_filter_modal = false;
+    }
+
+    /// Opens the deletion confirmation modal dialog for the selected entry.
+    pub fn open_delete_entry_modal(&mut self) {
+        let entries = self.filtered_history_entries();
+        if entries.is_empty() || self.selected_history_index >= entries.len() {
+            return;
+        }
+
+        self.show_delete_entry_modal = true;
+        self.show_new_entry_modal = false;
+        self.show_edit_entry_modal = false;
+        self.show_filter_modal = false;
+    }
+
+    /// Opens the search and filter prompt modal.
+    pub fn open_filter_modal(&mut self) {
+        self.filter_input = self.history_filter.clone().unwrap_or_default();
+        self.show_filter_modal = true;
+    }
+
+    /// Closes all active modal dialogs.
+    pub fn close_modal(&mut self) {
+        self.show_new_entry_modal = false;
+        self.show_edit_entry_modal = false;
+        self.show_delete_entry_modal = false;
+        self.show_filter_modal = false;
+    }
+
+    /// Returns `true` if any popup or modal dialog is currently active.
+    pub fn is_modal_open(&self) -> bool {
+        self.show_help
+            || self.show_new_entry_modal
+            || self.show_edit_entry_modal
+            || self.show_delete_entry_modal
+            || self.show_filter_modal
+    }
+
+    /// Saves the current entry form (creating a new entry or updating an existing entry) into SQLite.
+    pub fn save_entry_form(&mut self, db: &mut Database) -> Result<(), String> {
+        let description = if self.entry_form.description.trim().is_empty() {
+            "Manual Entry".to_string()
+        } else {
+            self.entry_form.description.trim().to_string()
+        };
+
+        let project_name = self.entry_form.project.trim();
+        let project_id = if !project_name.is_empty() {
+            match db.get_project_by_name(project_name) {
+                Ok(Some(p)) => p.id,
+                Ok(None) => match Project::new(project_name) {
+                    Ok(new_proj) => match db.create_project(&new_proj) {
+                        Ok(created) => created.id,
+                        Err(e) => return Err(format!("Failed to create project: {e}")),
+                    },
+                    Err(e) => return Err(format!("Invalid project name: {e}")),
+                },
+                Err(e) => return Err(format!("DB error querying project: {e}")),
+            }
+        } else {
+            None
+        };
+
+        let mut tags = Vec::new();
+        let tag_names: Vec<&str> = self
+            .entry_form
+            .tags
+            .split([',', ';'])
+            .map(|t| t.trim().trim_start_matches('#').trim())
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        for t_name in tag_names {
+            match db.get_tag_by_name(t_name) {
+                Ok(Some(tag)) => tags.push(tag),
+                Ok(None) => match Tag::new(t_name) {
+                    Ok(new_tag) => match db.create_tag(&new_tag) {
+                        Ok(created) => tags.push(created),
+                        Err(e) => return Err(format!("Failed to create tag: {e}")),
+                    },
+                    Err(e) => return Err(format!("Invalid tag name: {e}")),
+                },
+                Err(e) => return Err(format!("DB error querying tag: {e}")),
+            }
+        }
+
+        let duration = parse_duration_input(&self.entry_form.duration);
+
+        if self.show_edit_entry_modal {
+            if let Some(id) = self.entry_form.id {
+                match db.get_entry(id) {
+                    Ok(Some(mut existing)) => {
+                        existing.description = description;
+                        existing.project_id = project_id;
+                        existing.tags = tags;
+                        existing.synced = false;
+                        existing.end_time = Some(existing.start_time + duration);
+                        if let Err(e) = db.update_entry(&existing) {
+                            return Err(format!("Failed to update entry: {e}"));
+                        }
+                        self.set_status_message("Entry updated successfully");
+                    }
+                    Ok(None) => return Err("Entry to edit not found in database".to_string()),
+                    Err(e) => return Err(format!("DB error loading entry: {e}")),
+                }
+            }
+        } else {
+            let end_time = Utc::now();
+            let start_time = end_time - duration;
+            let mut entry = TimeEntry::new(description, start_time);
+            entry.end_time = Some(end_time);
+            entry.project_id = project_id;
+            entry.tags = tags;
+            entry.entry_mode = EntryMode::Stopwatch;
+            if let Err(e) = db.create_manual_entry(&entry) {
+                return Err(format!("Failed to create manual entry: {e}"));
+            }
+            self.set_status_message("Manual entry created successfully");
+        }
+
+        self.close_modal();
+        self.refresh_history(db);
+        self.refresh_today_entries(db);
+        Ok(())
     }
 
     /// Starts or stops the active timer in the database and updates state.
@@ -287,6 +748,7 @@ impl App {
                 self.set_status_message(format!("Stopped timer: {desc}"));
             }
             self.refresh_today_entries(db);
+            self.refresh_history(db);
         } else {
             let desc = "Study Session";
             let mut entry = TimeEntry::new(desc, Utc::now());
@@ -306,6 +768,7 @@ impl App {
                 }
             }
             self.refresh_today_entries(db);
+            self.refresh_history(db);
         }
     }
 
@@ -365,6 +828,7 @@ impl App {
                 }
             }
             self.refresh_today_entries(db);
+            self.refresh_history(db);
         } else {
             let phase = self.pomodoro.current_phase();
             let mode = if phase.is_work() {
@@ -391,6 +855,7 @@ impl App {
                 }
             }
             self.refresh_today_entries(db);
+            self.refresh_history(db);
         }
     }
 
@@ -431,6 +896,7 @@ impl App {
             }
         }
         self.refresh_today_entries(db);
+        self.refresh_history(db);
     }
 
     /// Handles keyboard events without database operations.
@@ -458,6 +924,79 @@ impl App {
                 | KeyCode::Enter
                 | KeyCode::Char(' ') => {
                     self.show_help = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // Intercept keys when modal dialogs are active
+        if self.show_delete_entry_modal {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    if let Some(db_ref) = db {
+                        self.delete_selected_history_entry(db_ref);
+                    } else {
+                        self.show_delete_entry_modal = false;
+                    }
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.show_delete_entry_modal = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        if self.show_new_entry_modal || self.show_edit_entry_modal {
+            match key.code {
+                KeyCode::Esc => {
+                    self.close_modal();
+                }
+                KeyCode::Enter => {
+                    if let Some(db_ref) = db {
+                        let _ = self.save_entry_form(db_ref);
+                    } else {
+                        self.close_modal();
+                    }
+                }
+                KeyCode::Tab | KeyCode::Down => {
+                    self.entry_form.active_field = (self.entry_form.active_field + 1) % 4;
+                }
+                KeyCode::BackTab | KeyCode::Up => {
+                    self.entry_form.active_field = (self.entry_form.active_field + 3) % 4;
+                }
+                KeyCode::Backspace => {
+                    self.entry_form.active_field_mut().pop();
+                }
+                KeyCode::Char(c) => {
+                    self.entry_form.active_field_mut().push(c);
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        if self.show_filter_modal {
+            match key.code {
+                KeyCode::Esc => {
+                    self.show_filter_modal = false;
+                }
+                KeyCode::Enter => {
+                    let trimmed = self.filter_input.trim();
+                    self.history_filter = if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    };
+                    self.selected_history_index = 0;
+                    self.show_filter_modal = false;
+                }
+                KeyCode::Backspace => {
+                    self.filter_input.pop();
+                }
+                KeyCode::Char(c) => {
+                    self.filter_input.push(c);
                 }
                 _ => {}
             }
@@ -531,7 +1070,32 @@ impl App {
                 }
                 _ => {}
             },
-            Tab::History | Tab::Projects | Tab::Analytics => {}
+            Tab::History => match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.select_next_history();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.select_prev_history();
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') => {
+                    self.open_new_entry_modal();
+                }
+                KeyCode::Char('e') | KeyCode::Char('E') => {
+                    self.open_edit_entry_modal();
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    self.open_delete_entry_modal();
+                }
+                KeyCode::Char('/') => {
+                    self.open_filter_modal();
+                }
+                KeyCode::Esc if self.history_filter.is_some() => {
+                    self.history_filter = None;
+                    self.selected_history_index = 0;
+                }
+                _ => {}
+            },
+            Tab::Projects | Tab::Analytics => {}
         }
     }
 }
@@ -682,5 +1246,25 @@ mod tests {
         // Clamped at 0
         app.select_prev_recent();
         assert_eq!(app.selected_recent_index, 0);
+    }
+
+    #[test]
+    fn test_parse_duration_input_cases() {
+        assert_eq!(
+            parse_duration_input("1h 15m"),
+            chrono::Duration::minutes(75)
+        );
+        assert_eq!(parse_duration_input("45m"), chrono::Duration::minutes(45));
+        assert_eq!(parse_duration_input("2h"), chrono::Duration::hours(2));
+        assert_eq!(parse_duration_input("90"), chrono::Duration::minutes(90));
+        assert_eq!(parse_duration_input("1.5h"), chrono::Duration::minutes(90));
+        assert_eq!(
+            parse_duration_input("01:20:00"),
+            chrono::Duration::minutes(80)
+        );
+        assert_eq!(
+            parse_duration_input("14:00 - 15:30"),
+            chrono::Duration::minutes(90)
+        );
     }
 }
