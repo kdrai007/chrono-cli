@@ -6,6 +6,7 @@ pub mod config;
 pub mod domain;
 pub mod notify;
 pub mod storage;
+pub mod tui;
 
 pub use cli::{run_cli, Cli, Commands, ExportFormat, ExportRecord, WaybarOutput};
 pub use clockify::{
@@ -24,6 +25,7 @@ pub use notify::{
     NotificationUrgency, NotifyError,
 };
 pub use storage::{Database, Repository, StorageError};
+pub use tui::{run_tui, App, Tab};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("Hello from clockify-tui!");

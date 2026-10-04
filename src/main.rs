@@ -17,6 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    println!("Launching Clockify TUI...");
+    clockify_tui::tui::run_tui(&mut db, config)?;
     Ok(())
 }
