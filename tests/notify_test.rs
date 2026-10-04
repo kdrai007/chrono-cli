@@ -279,3 +279,18 @@ fn test_service_with_custom_sink_and_clear() {
     assert_eq!(mock.sent_notifications().len(), 0);
     assert_eq!(mock.bell_count(), 0);
 }
+
+#[test]
+fn test_service_convenience_aliases() {
+    let (service, mock) = NotificationService::in_memory(GeneralConfig::default());
+
+    service
+        .notify_pomodoro_completed(&PomodoroPhase::Work(1), &PomodoroPhase::ShortBreak(1))
+        .unwrap();
+    service.notify_sync_status(true, "Synced 3 items").unwrap();
+
+    let sent = mock.sent_notifications();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0].0, "Focus Session Complete!");
+    assert_eq!(sent[1].0, "Sync Successful");
+}

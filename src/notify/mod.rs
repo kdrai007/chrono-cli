@@ -417,6 +417,15 @@ impl NotificationService {
         })
     }
 
+    /// Alias for notify_pomodoro_phase_change.
+    pub fn notify_pomodoro_completed(
+        &self,
+        completed: &PomodoroPhase,
+        next: &PomodoroPhase,
+    ) -> Result<(), NotifyError> {
+        self.notify_pomodoro_phase_change(completed, next)
+    }
+
     /// Convenience method to notify when a project target has been reached.
     pub fn notify_target_reached(&self, project: &str, hours: f64) -> Result<(), NotifyError> {
         self.send(&NotificationEvent::StudyTargetReached {
@@ -431,5 +440,10 @@ impl NotificationService {
             success,
             message: msg.to_string(),
         })
+    }
+
+    /// Alias for notify_sync.
+    pub fn notify_sync_status(&self, success: bool, msg: &str) -> Result<(), NotifyError> {
+        self.notify_sync(success, msg)
     }
 }
