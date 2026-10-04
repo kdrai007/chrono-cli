@@ -243,6 +243,7 @@ impl ClockifyApi for ClockifyClient {
         }
         #[cfg(not(feature = "cloud-sync"))]
         {
+            let _ = req;
             Err(ClockifyError::Other(
                 "cloud-sync feature is disabled".to_string(),
             ))
