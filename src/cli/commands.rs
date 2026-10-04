@@ -165,6 +165,21 @@ pub fn handle_status(db: &Database, json: bool) -> Result<(), Box<dyn std::error
                 } else {
                     None
                 };
+                let start_str = entry.start_time.format("%H:%M:%S").to_string();
+                let tags_str = if entry.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " [{}]",
+                        entry
+                            .tags
+                            .iter()
+                            .map(|t| format!("#{}", t.name))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                };
+
                 let text = if let Some(proj) = &project_name {
                     format!("{} [{}] ({})", entry.description, proj, elapsed_str)
                 } else {
@@ -172,11 +187,29 @@ pub fn handle_status(db: &Database, json: bool) -> Result<(), Box<dyn std::error
                 };
                 let tooltip = if let Some(proj) = &project_name {
                     format!(
-                        "{}\nProject: {}\nElapsed: {}",
-                        entry.description, proj, elapsed_str
+                        "{}\nProject: {}\nStarted: {}\nElapsed: {}{}",
+                        entry.description,
+                        proj,
+                        start_str,
+                        elapsed_str,
+                        if tags_str.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nTags:{}", tags_str)
+                        }
                     )
                 } else {
-                    format!("{}\nElapsed: {}", entry.description, elapsed_str)
+                    format!(
+                        "{}\nStarted: {}\nElapsed: {}{}",
+                        entry.description,
+                        start_str,
+                        elapsed_str,
+                        if tags_str.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nTags:{}", tags_str)
+                        }
+                    )
                 };
                 WaybarOutput {
                     text,
@@ -202,13 +235,29 @@ pub fn handle_status(db: &Database, json: bool) -> Result<(), Box<dyn std::error
                 } else {
                     None
                 };
+                let tags_suffix = if entry.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " [{}]",
+                        entry
+                            .tags
+                            .iter()
+                            .map(|t| format!("#{}", t.name))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                };
                 if let Some(proj) = project_name {
                     println!(
-                        "[RUNNING] {} [{}] - {}",
-                        entry.description, proj, elapsed_str
+                        "[RUNNING] {} [{}] - {}{}",
+                        entry.description, proj, elapsed_str, tags_suffix
                     );
                 } else {
-                    println!("[RUNNING] {} - {}", entry.description, elapsed_str);
+                    println!(
+                        "[RUNNING] {} - {}{}",
+                        entry.description, elapsed_str, tags_suffix
+                    );
                 }
             }
             None => {

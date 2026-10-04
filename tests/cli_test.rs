@@ -87,6 +87,10 @@ fn test_cli_full_workflow() {
         stdout.contains("Physics"),
         "Status text should contain project 'Physics', got: {stdout}"
     );
+    assert!(
+        stdout.contains("#Exam") || stdout.contains("Exam"),
+        "Status text should contain tags, got: {stdout}"
+    );
 
     // 5. Status --json when running
     let output = new_cmd().args(["status", "--json"]).assert().success();
@@ -103,6 +107,14 @@ fn test_cli_full_workflow() {
     assert!(
         tooltip.contains("Review Physics"),
         "Tooltip should contain description 'Review Physics', got: {tooltip}"
+    );
+    assert!(
+        tooltip.contains("Started:"),
+        "Tooltip should contain 'Started:', got: {tooltip}"
+    );
+    assert!(
+        tooltip.contains("Exam"),
+        "Tooltip should contain tags, got: {tooltip}"
     );
 
     // 6. Stop timer
