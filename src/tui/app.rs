@@ -671,6 +671,45 @@ impl App {
         }
     }
 
+    /// Triggers Clockify cloud synchronization if configured.
+    pub fn sync_clockify(&mut self, db: &mut Database) {
+        if !self.config.clockify.enabled
+            || self.config.clockify.api_key.trim().is_empty()
+            || self.config.clockify.workspace_id.trim().is_empty()
+        {
+            self.set_status_message("Sync disabled: configure api_key in config.toml");
+            return;
+        }
+
+        self.set_status_message("Syncing with Clockify...");
+        match crate::clockify::ClockifyClient::new(&self.config.clockify.api_key) {
+            Ok(client) => {
+                match crate::clockify::SyncEngine::sync(
+                    &client,
+                    db,
+                    &self.config.clockify.workspace_id,
+                ) {
+                    Ok(result) => {
+                        self.refresh_today_entries(db);
+                        self.refresh_history(db);
+                        self.refresh_projects(db);
+                        self.refresh_analytics(db);
+                        self.set_status_message(format!(
+                            "Sync done: {} pushed, {} pulled",
+                            result.pushed_entries, result.pulled_projects
+                        ));
+                    }
+                    Err(e) => {
+                        self.set_status_message(format!("Sync failed: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                self.set_status_message(format!("Clockify error: {e}"));
+            }
+        }
+    }
+
     /// Moves the recent sessions list selection down.
     pub fn select_next_recent(&mut self) {
         let count = self.today_entries.len().min(5);
@@ -1492,6 +1531,14 @@ impl App {
             }
             KeyCode::Tab => {
                 self.next_tab();
+                return;
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                if let Some(db_ref) = db {
+                    self.sync_clockify(db_ref);
+                } else {
+                    self.set_status_message("Sync unavailable (offline)");
+                }
                 return;
             }
             _ => {}

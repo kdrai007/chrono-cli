@@ -4,12 +4,11 @@ use chrono::Utc;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs};
+use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use ratatui::Frame;
 
 use crate::domain::{format_duration_hms, EntryMode};
 use crate::tui::app::{App, Tab};
-use crate::tui::widgets::modal::centered_rect;
 
 /// Renders the root TUI shell layout for the given application state.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -29,7 +28,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     render_footer(app, frame, chunks[3]);
 
     if app.show_help {
-        render_help_modal(frame);
+        crate::tui::widgets::help::render_help_modal(frame);
     } else if app.show_delete_entry_modal {
         crate::tui::views::history::render_delete_modal(app, frame);
     } else if app.show_new_entry_modal {
@@ -282,112 +281,6 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     let paragraph = Paragraph::new(Line::from(spans)).alignment(Alignment::Left);
     frame.render_widget(paragraph, inner);
-}
-
-/// Renders the centered modal help reference sheet.
-fn render_help_modal(frame: &mut Frame) {
-    let popup_area = centered_rect(80, 70, frame.area());
-    frame.render_widget(Clear, popup_area);
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .title(Span::styled(
-            " ⌨  Shortcuts Reference (Press [?] to Close) ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
-
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner);
-
-    let left_text = vec![
-        Line::from(Span::styled(
-            "Navigation",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled(" [1]–[4]   ", Style::default().fg(Color::Yellow)),
-            Span::raw("Switch tabs"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [Tab]     ", Style::default().fg(Color::Yellow)),
-            Span::raw("Next tab"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [S-Tab]   ", Style::default().fg(Color::Yellow)),
-            Span::raw("Previous tab"),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "General",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled(" [?] / Esc ", Style::default().fg(Color::Yellow)),
-            Span::raw("Toggle / Close help"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [q]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Quit application"),
-        ]),
-    ];
-
-    let right_text = vec![
-        Line::from(Span::styled(
-            "Timer & Actions",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled(" [Space]   ", Style::default().fg(Color::Yellow)),
-            Span::raw("Start / Stop timer"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [p]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Pomodoro phase"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [s]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Clockify cloud sync"),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Lists & CRUD",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(vec![
-            Span::styled(" [j] / [k] ", Style::default().fg(Color::Yellow)),
-            Span::raw("Navigate lists"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [n] / [e] ", Style::default().fg(Color::Yellow)),
-            Span::raw("New / Edit entry"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [d]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Delete item"),
-        ]),
-        Line::from(vec![
-            Span::styled(" [r]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Refresh analytics"),
-        ]),
-    ];
-
-    frame.render_widget(Paragraph::new(left_text), cols[0]);
-    frame.render_widget(Paragraph::new(right_text), cols[1]);
 }
 
 #[cfg(test)]
