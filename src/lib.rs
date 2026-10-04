@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod domain;
+pub mod notify;
 pub mod storage;
 
 pub use config::AppConfig;
@@ -9,6 +10,10 @@ pub use domain::{
     calculate_streaks, format_duration_hms, format_duration_human, DailyStudySummary, DomainError,
     EntryMode, PomodoroPhase, PomodoroStateMachine, PomodoroStats, Project, ProjectTargetProgress,
     StreakStats, SubjectBreakdown, Tag, TimeEntry, DEFAULT_PROJECT_COLOR,
+};
+pub use notify::{
+    MockNotificationSink, NotificationEvent, NotificationService, NotificationSink,
+    NotificationUrgency, NotifyError,
 };
 pub use storage::{Database, Repository, StorageError};
 
