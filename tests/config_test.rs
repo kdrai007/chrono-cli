@@ -1,6 +1,6 @@
+use clockify_tui::config::{AppConfig, ClockifyConfig, GeneralConfig, PomodoroConfig};
 use std::fs;
 use tempfile::tempdir;
-use clockify_tui::config::{AppConfig, ClockifyConfig, GeneralConfig, PomodoroConfig};
 
 #[test]
 fn test_default_config_values() {
@@ -34,7 +34,8 @@ fn test_toml_serialization_and_deserialization() {
     config.clockify.api_key = "secret_key".to_string();
 
     let toml_str = toml::to_string(&config).expect("Failed to serialize config to TOML");
-    let deserialized: AppConfig = toml::from_str(&toml_str).expect("Failed to deserialize config from TOML");
+    let deserialized: AppConfig =
+        toml::from_str(&toml_str).expect("Failed to deserialize config from TOML");
 
     assert_eq!(config, deserialized);
 }
@@ -77,7 +78,8 @@ fn test_save_and_load_from_file() {
     assert!(config_path.exists());
 
     // Load back from file
-    let loaded_config = AppConfig::load_from_path(&config_path).expect("Failed to load config from path");
+    let loaded_config =
+        AppConfig::load_from_path(&config_path).expect("Failed to load config from path");
     assert_eq!(original_config, loaded_config);
 }
 
@@ -114,7 +116,9 @@ fn test_load_fallback_when_file_not_found() {
 #[test]
 fn test_default_config_path() {
     let path = AppConfig::default_config_path();
-    assert!(path.ends_with("clockify-tui/config.toml") || path.ends_with("clockify-tui\\config.toml"));
+    assert!(
+        path.ends_with("clockify-tui/config.toml") || path.ends_with("clockify-tui\\config.toml")
+    );
 }
 
 #[test]
@@ -124,4 +128,3 @@ fn test_app_config_load() {
     let result = AppConfig::load();
     assert!(result.is_ok());
 }
-
