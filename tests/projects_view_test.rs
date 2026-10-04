@@ -460,3 +460,121 @@ fn test_keyboard_routing_in_projects_tab_and_modals() {
     assert_eq!(app.project_list.len(), 0);
     assert!(db.get_project(p.id.unwrap()).unwrap().is_none());
 }
+
+#[test]
+fn test_render_standard_80x24_dimensions_and_delete_modal() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut app = App::new(AppConfig::default());
+    app.set_tab(Tab::Projects);
+
+    let mut p = Project::new("Operating Systems").unwrap();
+    p.color = "#9b59b6".to_string();
+    p.target_hours_week = 8.0;
+    app.project_list = vec![p];
+
+    // 1. Base view without modal: verify 80-column responsive header and table
+    terminal
+        .draw(|f| {
+            clockify_tui::tui::ui::render(&app, f);
+        })
+        .unwrap();
+
+    let buffer_base: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    assert!(buffer_base.contains("Courses:"));
+    assert!(buffer_base.contains("Operating Systems"));
+
+    // 2. With delete modal active: verify modal fits and action buttons are visible
+    app.show_delete_project_modal = true;
+    terminal
+        .draw(|f| {
+            clockify_tui::tui::ui::render(&app, f);
+        })
+        .unwrap();
+
+    let buffer_modal: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    assert!(buffer_modal.contains("Confirm Project Deletion"));
+    assert!(buffer_modal.contains("[y / Enter]"));
+    assert!(buffer_modal.contains("Confirm Delete"));
+    assert!(buffer_modal.contains("[n / Esc]"));
+}
+
+#[test]
+fn test_project_form_validation_errors() {
+    let mut db = Database::open_in_memory().unwrap();
+    let mut app = App::new(AppConfig::default());
+
+    // 1. Empty name
+    app.project_form.name = "   ".to_string();
+    let err = app.save_project_form(&mut db).unwrap_err();
+    assert!(err.contains("cannot be empty"));
+
+    // 2. Invalid hex color
+    app.project_form.name = "Robotics".to_string();
+    app.project_form.color = "#invalid".to_string();
+    let err = app.save_project_form(&mut db).unwrap_err();
+    assert!(err.contains("valid 6-character hex"));
+
+    // 3. Negative target hours
+    app.project_form.color = "#3498db".to_string();
+    app.project_form.target_hours = "-5.0".to_string();
+    let err = app.save_project_form(&mut db).unwrap_err();
+    assert!(err.contains("finite, non-negative"));
+
+    // 4. Infinite target hours
+    app.project_form.target_hours = "inf".to_string();
+    let err = app.save_project_form(&mut db).unwrap_err();
+    assert!(err.contains("finite, non-negative"));
+}
+
+#[test]
+fn test_project_list_viewport_scrolling() {
+    let backend = TestBackend::new(80, 15);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut app = App::new(AppConfig::default());
+    app.set_tab(Tab::Projects);
+
+    let mut projects = Vec::new();
+    for i in 1..=20 {
+        let mut p = Project::new(format!("Course #{i}")).unwrap();
+        p.id = Some(i as i64);
+        projects.push(p);
+    }
+    app.project_list = projects;
+    app.selected_project_index = 18; // Near bottom
+
+    terminal
+        .draw(|f| {
+            clockify_tui::tui::views::projects::render_projects_view(&app, f, f.area());
+        })
+        .unwrap();
+
+    let buffer: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    // Should render earlier projects indicator when scrolled down
+    assert!(buffer.contains("▲"));
+    assert!(buffer.contains("earlier"));
+    assert!(buffer.contains("Course #19"));
+}

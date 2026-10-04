@@ -601,6 +601,14 @@ impl App {
                 .map(|p| (p.project_id, p))
                 .collect();
         }
+
+        if let Some(entry) = &self.active_entry {
+            if let Some(pid) = entry.project_id {
+                self.active_project_name = self.projects.get(&pid).map(|p| p.name.clone());
+            } else {
+                self.active_project_name = None;
+            }
+        }
     }
 
     /// Moves the recent sessions list selection down.
@@ -824,6 +832,13 @@ impl App {
             if !c.starts_with('#') {
                 c = format!("#{c}");
             }
+            let hex_digits = c.trim_start_matches('#');
+            if hex_digits.len() != 6
+                || !hex_digits.is_ascii()
+                || !hex_digits.chars().all(|ch| ch.is_ascii_hexdigit())
+            {
+                return Err("Color must be a valid 6-character hex code (e.g. #3498db)".to_string());
+            }
             c
         };
 
@@ -837,8 +852,8 @@ impl App {
                 .map_err(|_| "Target hours must be a valid number (e.g. 10.0)".to_string())?
         };
 
-        if target_hours.is_nan() || target_hours < 0.0 {
-            return Err("Weekly target hours cannot be negative or NaN".to_string());
+        if !target_hours.is_finite() || target_hours < 0.0 {
+            return Err("Weekly target hours must be a finite, non-negative number".to_string());
         }
 
         if self.show_edit_project_modal {

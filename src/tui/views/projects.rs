@@ -154,42 +154,75 @@ fn render_summary_header(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let summary_line = Line::from(vec![
-        Span::styled(" Total Courses: ", Style::default().fg(Color::Gray)),
-        Span::styled(
-            format!("{total_projects}"),
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("   │   Active: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            format!("{active_projects}"),
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            "   │   Weekly Target: ",
-            Style::default().fg(Color::DarkGray),
-        ),
-        Span::styled(
-            format!("{total_target_hours:.1}h"),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            "   │   Logged This Week: ",
-            Style::default().fg(Color::DarkGray),
-        ),
-        Span::styled(
-            format_hours_human(total_logged_hours),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]);
+    let summary_line = if inner.width < 90 {
+        Line::from(vec![
+            Span::styled(" Courses: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{total_projects}"),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │ Active: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{active_projects}"),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │ Target: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{total_target_hours:.1}h"),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │ Logged: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format_hours_human(total_logged_hours),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" Total Courses: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{total_projects}"),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("   │   Active: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{active_projects}"),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "   │   Weekly Target: ",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                format!("{total_target_hours:.1}h"),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "   │   Logged This Week: ",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                format_hours_human(total_logged_hours),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])
+    };
 
     let p = Paragraph::new(summary_line).alignment(Alignment::Center);
     frame.render_widget(p, inner);
@@ -262,7 +295,7 @@ fn render_projects_table(app: &App, frame: &mut Frame, area: Rect) {
         rows.push(
             Row::new([
                 Cell::from(Span::styled(
-                    format!("  ▲ ... {start_idx} earlier projects ..."),
+                    format!("  ▲ ... {start_idx} earlier"),
                     Style::default().fg(Color::DarkGray),
                 )),
                 Cell::from(""),
@@ -377,7 +410,7 @@ fn render_projects_table(app: &App, frame: &mut Frame, area: Rect) {
         rows.push(
             Row::new([
                 Cell::from(Span::styled(
-                    format!("  ▼ ... {} more projects below ...", total - end_idx),
+                    format!("  ▼ ... {} more", total - end_idx),
                     Style::default().fg(Color::DarkGray),
                 )),
                 Cell::from(""),
@@ -392,11 +425,11 @@ fn render_projects_table(app: &App, frame: &mut Frame, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Percentage(32), // Project / Course name
-            Constraint::Length(10),     // Target
-            Constraint::Length(16),     // Logged
-            Constraint::Length(24),     // Progress bar
-            Constraint::Length(14),     // Status badge
+            Constraint::Min(20),    // Project / Course name
+            Constraint::Length(7),  // Target (e.g. "10.0h")
+            Constraint::Length(8),  // Logged (e.g. "6h 15m")
+            Constraint::Length(20), // Progress bar (e.g. "[████████░░] 80.0%")
+            Constraint::Length(11), // Status badge (e.g. "[On Track]")
         ],
     )
     .header(header);
@@ -406,43 +439,83 @@ fn render_projects_table(app: &App, frame: &mut Frame, area: Rect) {
 
 /// Renders the bottom hotkey hints bar for Tab 3.
 fn render_hints_bar(frame: &mut Frame, area: Rect) {
-    let hints_line = Line::from(vec![
-        Span::styled(
-            " [a] ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("Add Project   "),
-        Span::styled(
-            "[e] ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("Edit Target   "),
-        Span::styled(
-            "[x] ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("Toggle Archive   "),
-        Span::styled(
-            "[d] ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("Delete   "),
-        Span::styled(
-            "[j/k] ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("Navigate"),
-    ]);
+    let hints_line = if area.width < 90 {
+        Line::from(vec![
+            Span::styled(
+                " [a] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Add  "),
+            Span::styled(
+                "[e] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Edit  "),
+            Span::styled(
+                "[x] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Archive  "),
+            Span::styled(
+                "[d] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Del  "),
+            Span::styled(
+                "[j/k] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Nav"),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                " [a] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Add Project   "),
+            Span::styled(
+                "[e] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Edit Target   "),
+            Span::styled(
+                "[x] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Toggle Archive   "),
+            Span::styled(
+                "[d] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Delete   "),
+            Span::styled(
+                "[j/k] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("Navigate"),
+        ])
+    };
 
     frame.render_widget(
         Paragraph::new(hints_line).alignment(Alignment::Center),
@@ -614,7 +687,7 @@ pub fn render_project_form_modal(app: &App, frame: &mut Frame, is_new: bool) {
 
 /// Renders the confirmation modal for deleting a project.
 pub fn render_delete_project_modal(app: &App, frame: &mut Frame) {
-    let popup_area = centered_rect(60, 35, frame.area());
+    let popup_area = centered_rect(65, 45, frame.area());
     frame.render_widget(Clear, popup_area);
 
     let block = Block::default()
@@ -634,14 +707,12 @@ pub fn render_delete_project_modal(app: &App, frame: &mut Frame) {
         .unwrap_or("selected project");
 
     let lines = vec![
-        Line::from(""),
         Line::from(Span::styled(
             "  Are you sure you want to delete this project?",
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from(""),
         Line::from(vec![
             Span::raw("  Project: "),
             Span::styled(
