@@ -7,11 +7,16 @@ use chrono::{DateTime, Utc};
 pub mod entry;
 pub mod pomodoro;
 pub mod project;
+pub mod stats;
 pub mod tag;
 
 pub use entry::{format_duration_hms, format_duration_human, EntryMode, TimeEntry};
 pub use pomodoro::{PomodoroPhase, PomodoroStateMachine};
 pub use project::{Project, DEFAULT_PROJECT_COLOR};
+pub use stats::{
+    calculate_streaks, DailyStudySummary, PomodoroStats, ProjectTargetProgress, StreakStats,
+    SubjectBreakdown,
+};
 pub use tag::Tag;
 
 /// Errors arising from domain entity validation or state transitions.

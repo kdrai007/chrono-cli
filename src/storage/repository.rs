@@ -1,7 +1,12 @@
-use chrono::{DateTime, Utc};
+use std::collections::{BTreeMap, HashMap};
+
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::domain::{EntryMode, Project, Tag, TimeEntry};
+use crate::domain::{
+    calculate_streaks, DailyStudySummary, EntryMode, PomodoroStats, Project, ProjectTargetProgress,
+    StreakStats, SubjectBreakdown, Tag, TimeEntry,
+};
 
 use super::db::Database;
 use super::StorageError;
@@ -36,6 +41,29 @@ pub trait Repository {
     ) -> Result<Vec<TimeEntry>, StorageError>;
     fn update_entry(&mut self, entry: &TimeEntry) -> Result<(), StorageError>;
     fn delete_entry(&mut self, id: i64) -> Result<(), StorageError>;
+
+    // Stats & Analytics operations
+    fn get_streak_stats(&self, today: NaiveDate) -> Result<StreakStats, StorageError>;
+    fn get_daily_summaries(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<DailyStudySummary>, StorageError>;
+    fn get_weekly_project_progress(
+        &self,
+        week_start: NaiveDate,
+        week_end: NaiveDate,
+    ) -> Result<Vec<ProjectTargetProgress>, StorageError>;
+    fn get_subject_breakdown(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<SubjectBreakdown>, StorageError>;
+    fn get_pomodoro_stats(
+        &self,
+        today: NaiveDate,
+        week_start: NaiveDate,
+    ) -> Result<PomodoroStats, StorageError>;
 }
 
 pub(crate) fn format_dt(dt: &DateTime<Utc>) -> String {
@@ -625,6 +653,295 @@ impl Repository for Database {
             .execute("DELETE FROM time_entries WHERE id = ?1;", [id])?;
         Ok(())
     }
+
+    fn get_streak_stats(&self, today: NaiveDate) -> Result<StreakStats, StorageError> {
+        let mut stmt = self.conn().prepare(
+            "SELECT DISTINCT SUBSTR(start_time, 1, 10)
+             FROM time_entries
+             WHERE entry_mode != 'pomodoro_break'
+             ORDER BY start_time ASC;",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let date_str: String = row.get(0)?;
+            Ok(date_str)
+        })?;
+
+        let mut dates = Vec::new();
+        for r in rows {
+            let s = r?;
+            if let Ok(d) = NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+                dates.push(d);
+            }
+        }
+
+        Ok(calculate_streaks(&dates, today))
+    }
+
+    fn get_daily_summaries(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<DailyStudySummary>, StorageError> {
+        let start_dt = start_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let end_dt = (end_date + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let mut stmt = self.conn().prepare(
+            "SELECT start_time, end_time
+             FROM time_entries
+             WHERE start_time >= ?1 AND start_time < ?2 AND entry_mode != 'pomodoro_break'
+             ORDER BY start_time ASC;",
+        )?;
+
+        let rows = stmt.query_map(params![format_dt(&start_dt), format_dt(&end_dt)], |row| {
+            let start_str: String = row.get(0)?;
+            let end_str: Option<String> = row.get(1)?;
+            Ok((start_str, end_str))
+        })?;
+
+        let now = Utc::now();
+        let mut daily_map: BTreeMap<NaiveDate, Duration> = BTreeMap::new();
+
+        for r in rows {
+            let (start_str, end_str) = r?;
+            let start_time = parse_dt(&start_str)?;
+            let end_time = match end_str {
+                Some(ref s) => Some(parse_dt(s)?),
+                None => None,
+            };
+
+            let duration = match end_time {
+                Some(end) => (end - start_time).max(Duration::zero()),
+                None => (now - start_time).max(Duration::zero()),
+            };
+
+            let date = start_time.date_naive();
+            *daily_map.entry(date).or_insert_with(Duration::zero) += duration;
+        }
+
+        let summaries = daily_map
+            .into_iter()
+            .map(|(date, duration)| DailyStudySummary { date, duration })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    fn get_weekly_project_progress(
+        &self,
+        week_start: NaiveDate,
+        week_end: NaiveDate,
+    ) -> Result<Vec<ProjectTargetProgress>, StorageError> {
+        let start_dt = week_start.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let end_dt = (week_end + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let projects = self.list_projects(false)?;
+
+        let mut stmt = self.conn().prepare(
+            "SELECT project_id, start_time, end_time
+             FROM time_entries
+             WHERE project_id IS NOT NULL
+               AND start_time >= ?1
+               AND start_time < ?2
+               AND entry_mode != 'pomodoro_break';",
+        )?;
+
+        let rows = stmt.query_map(params![format_dt(&start_dt), format_dt(&end_dt)], |row| {
+            let pid: i64 = row.get(0)?;
+            let start_str: String = row.get(1)?;
+            let end_str: Option<String> = row.get(2)?;
+            Ok((pid, start_str, end_str))
+        })?;
+
+        let now = Utc::now();
+        let mut actual_hours_map: HashMap<i64, f64> = HashMap::new();
+
+        for r in rows {
+            let (pid, start_str, end_str) = r?;
+            let start_time = parse_dt(&start_str)?;
+            let end_time = match end_str {
+                Some(ref s) => Some(parse_dt(s)?),
+                None => None,
+            };
+
+            let duration = match end_time {
+                Some(end) => (end - start_time).max(Duration::zero()),
+                None => (now - start_time).max(Duration::zero()),
+            };
+
+            let hours = duration.num_milliseconds() as f64 / 3_600_000.0;
+            *actual_hours_map.entry(pid).or_insert(0.0) += hours;
+        }
+
+        let mut progress_list = Vec::with_capacity(projects.len());
+        for proj in projects {
+            if let Some(pid) = proj.id {
+                let actual_hours = actual_hours_map.get(&pid).copied().unwrap_or(0.0);
+                progress_list.push(ProjectTargetProgress::new(
+                    pid,
+                    proj.name,
+                    proj.color,
+                    proj.target_hours_week,
+                    actual_hours,
+                ));
+            }
+        }
+
+        progress_list.sort_by(|a, b| a.project_name.cmp(&b.project_name));
+
+        Ok(progress_list)
+    }
+
+    fn get_subject_breakdown(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<SubjectBreakdown>, StorageError> {
+        let start_dt = start_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let end_dt = (end_date + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let mut stmt = self.conn().prepare(
+            "SELECT COALESCE(p.name, 'No Project'),
+                    COALESCE(p.color, '#3498db'),
+                    e.start_time,
+                    e.end_time
+             FROM time_entries e
+             LEFT JOIN projects p ON e.project_id = p.id
+             WHERE e.start_time >= ?1
+               AND e.start_time < ?2
+               AND e.entry_mode != 'pomodoro_break'
+             ORDER BY e.start_time ASC;",
+        )?;
+
+        let rows = stmt.query_map(params![format_dt(&start_dt), format_dt(&end_dt)], |row| {
+            let name: String = row.get(0)?;
+            let color: String = row.get(1)?;
+            let start_str: String = row.get(2)?;
+            let end_str: Option<String> = row.get(3)?;
+            Ok((name, color, start_str, end_str))
+        })?;
+
+        let now = Utc::now();
+        let mut subject_map: HashMap<String, (String, Duration)> = HashMap::new();
+        let mut total_duration = Duration::zero();
+
+        for r in rows {
+            let (name, color, start_str, end_str) = r?;
+            let start_time = parse_dt(&start_str)?;
+            let end_time = match end_str {
+                Some(ref s) => Some(parse_dt(s)?),
+                None => None,
+            };
+
+            let duration = match end_time {
+                Some(end) => (end - start_time).max(Duration::zero()),
+                None => (now - start_time).max(Duration::zero()),
+            };
+
+            total_duration += duration;
+            let entry = subject_map
+                .entry(name)
+                .or_insert_with(|| (color, Duration::zero()));
+            entry.1 += duration;
+        }
+
+        let total_secs = total_duration.num_seconds().max(0) as f64;
+        let mut breakdowns = Vec::with_capacity(subject_map.len());
+
+        for (project_name, (color, duration)) in subject_map {
+            let percentage = if total_secs > 0.0 {
+                (duration.num_seconds().max(0) as f64 / total_secs) * 100.0
+            } else {
+                0.0
+            };
+
+            breakdowns.push(SubjectBreakdown::new(
+                project_name,
+                color,
+                duration,
+                percentage,
+            ));
+        }
+
+        breakdowns.sort_by(|a, b| {
+            b.duration
+                .cmp(&a.duration)
+                .then_with(|| a.project_name.cmp(&b.project_name))
+        });
+
+        Ok(breakdowns)
+    }
+
+    fn get_pomodoro_stats(
+        &self,
+        today: NaiveDate,
+        week_start: NaiveDate,
+    ) -> Result<PomodoroStats, StorageError> {
+        let today_start_dt = today.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let today_end_dt = (today + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let week_start_dt = week_start.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let week_end_dt = (week_start + Duration::days(7))
+            .max(today + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let mut stmt = self.conn().prepare(
+            "SELECT start_time, end_time
+             FROM time_entries
+             WHERE entry_mode = 'pomodoro_work'
+               AND end_time IS NOT NULL
+               AND start_time >= ?1
+               AND start_time < ?2
+             ORDER BY start_time ASC;",
+        )?;
+
+        let rows = stmt.query_map(
+            params![format_dt(&week_start_dt), format_dt(&week_end_dt)],
+            |row| {
+                let start_str: String = row.get(0)?;
+                let end_str: String = row.get(1)?;
+                Ok((start_str, end_str))
+            },
+        )?;
+
+        let mut completed_today = 0u32;
+        let mut completed_this_week = 0u32;
+        let mut total_focus_mins = 0i64;
+
+        for r in rows {
+            let (start_str, end_str) = r?;
+            let start_time = parse_dt(&start_str)?;
+            let end_time = parse_dt(&end_str)?;
+
+            let duration = (end_time - start_time).max(Duration::zero());
+            completed_this_week += 1;
+            total_focus_mins += duration.num_minutes();
+
+            if start_time >= today_start_dt && start_time < today_end_dt {
+                completed_today += 1;
+            }
+        }
+
+        Ok(PomodoroStats {
+            completed_today,
+            completed_this_week,
+            total_focus_mins,
+        })
+    }
 }
 
 impl Database {
@@ -706,5 +1023,41 @@ impl Database {
 
     pub fn delete_entry(&mut self, id: i64) -> Result<(), StorageError> {
         Repository::delete_entry(self, id)
+    }
+
+    pub fn get_streak_stats(&self, today: NaiveDate) -> Result<StreakStats, StorageError> {
+        Repository::get_streak_stats(self, today)
+    }
+
+    pub fn get_daily_summaries(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<DailyStudySummary>, StorageError> {
+        Repository::get_daily_summaries(self, start_date, end_date)
+    }
+
+    pub fn get_weekly_project_progress(
+        &self,
+        week_start: NaiveDate,
+        week_end: NaiveDate,
+    ) -> Result<Vec<ProjectTargetProgress>, StorageError> {
+        Repository::get_weekly_project_progress(self, week_start, week_end)
+    }
+
+    pub fn get_subject_breakdown(
+        &self,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<SubjectBreakdown>, StorageError> {
+        Repository::get_subject_breakdown(self, start_date, end_date)
+    }
+
+    pub fn get_pomodoro_stats(
+        &self,
+        today: NaiveDate,
+        week_start: NaiveDate,
+    ) -> Result<PomodoroStats, StorageError> {
+        Repository::get_pomodoro_stats(self, today, week_start)
     }
 }
