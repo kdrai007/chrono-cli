@@ -65,6 +65,8 @@ impl ClockifyClient {
         #[cfg(feature = "cloud-sync")]
         {
             let http = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .connect_timeout(std::time::Duration::from_secs(10))
                 .build()
                 .map_err(|e| ClockifyError::Http(e.to_string()))?;
 
@@ -190,7 +192,10 @@ impl ClockifyApi for ClockifyClient {
 
         #[cfg(feature = "cloud-sync")]
         {
-            let url = format!("{}/workspaces/{workspace_id}/projects", self.base_url);
+            let url = format!(
+                "{}/workspaces/{workspace_id}/projects?page-size=5000",
+                self.base_url
+            );
             self.get(&url)
         }
         #[cfg(not(feature = "cloud-sync"))]
@@ -208,7 +213,10 @@ impl ClockifyApi for ClockifyClient {
 
         #[cfg(feature = "cloud-sync")]
         {
-            let url = format!("{}/workspaces/{workspace_id}/tags", self.base_url);
+            let url = format!(
+                "{}/workspaces/{workspace_id}/tags?page-size=5000",
+                self.base_url
+            );
             self.get(&url)
         }
         #[cfg(not(feature = "cloud-sync"))]

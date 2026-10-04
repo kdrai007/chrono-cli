@@ -444,3 +444,12 @@ fn test_sync_engine_handles_entry_push_failure_gracefully() {
     assert!(!reloaded.synced);
     assert_eq!(reloaded.clockify_id, None);
 }
+
+#[test]
+fn test_clockify_client_initialization_with_https_base_url() {
+    let client = ClockifyClient::new("test-api-key-12345");
+    assert!(client.is_ok(), "Client should initialize with TLS support");
+    let c = client.unwrap();
+    assert_eq!(c.api_key(), "test-api-key-12345");
+    assert!(c.base_url().starts_with("https://"));
+}
