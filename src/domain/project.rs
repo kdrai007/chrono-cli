@@ -92,9 +92,9 @@ impl Project {
         if self.name.trim().is_empty() {
             return Err(DomainError::EmptyName("Project name"));
         }
-        if self.target_hours_week < 0.0 {
+        if self.target_hours_week.is_nan() || self.target_hours_week < 0.0 {
             return Err(DomainError::ValidationError(
-                "Weekly target hours cannot be negative".to_string(),
+                "Weekly target hours cannot be negative or NaN".to_string(),
             ));
         }
         Ok(())

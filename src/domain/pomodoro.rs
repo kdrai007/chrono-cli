@@ -155,7 +155,8 @@ impl PomodoroStateMachine {
     pub fn next_phase(&mut self) -> PomodoroPhase {
         let next = match self.current_phase {
             PomodoroPhase::Work(session) => {
-                if session % self.sessions_until_long_break == 0 {
+                let divisor = self.sessions_until_long_break.max(1);
+                if session % divisor == 0 {
                     PomodoroPhase::LongBreak(session)
                 } else {
                     PomodoroPhase::ShortBreak(session)
