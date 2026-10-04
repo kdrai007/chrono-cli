@@ -3,6 +3,8 @@
 pub mod app;
 pub mod event;
 pub mod ui;
+pub mod views;
+pub mod widgets;
 
 use std::io::{self, Stdout};
 
@@ -17,6 +19,8 @@ use ratatui::Terminal;
 pub use app::{App, Tab};
 pub use event::{Event, EventHandler};
 pub use ui::render;
+pub use views::timer::{render_timer_view, timer_view};
+pub use widgets::BigClock;
 
 use crate::config::AppConfig;
 use crate::storage::Database;
@@ -65,13 +69,14 @@ pub fn run_loop<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     events: &EventHandler,
+    db: &mut Database,
 ) -> Result<(), Box<dyn std::error::Error>> {
     while app.running {
         terminal.draw(|f| ui::render(app, f))?;
 
         match events.next()? {
             Event::Key(key) => {
-                app.handle_key(key);
+                app.handle_key_with_db(key, db);
             }
             Event::Tick => {
                 app.tick();
@@ -98,8 +103,9 @@ pub fn run_tui(db: &mut Database, config: AppConfig) -> Result<(), Box<dyn std::
     }
 
     let mut app = App::new(config).with_active_entry(active_entry, active_project_name);
+    app.refresh_today_entries(db);
 
-    let run_res = run_loop(&mut terminal, &mut app, &event_handler);
+    let run_res = run_loop(&mut terminal, &mut app, &event_handler, db);
     let restore_res = restore_terminal(&mut terminal);
 
     run_res?;
