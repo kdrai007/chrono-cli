@@ -659,7 +659,7 @@ impl Repository for Database {
             "SELECT DISTINCT SUBSTR(start_time, 1, 10)
              FROM time_entries
              WHERE entry_mode != 'pomodoro_break'
-             ORDER BY start_time ASC;",
+             ORDER BY 1 ASC;",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -893,7 +893,13 @@ impl Repository for Database {
             .and_utc();
 
         let week_start_dt = week_start.and_hms_opt(0, 0, 0).unwrap().and_utc();
-        let week_end_dt = (week_start + Duration::days(7))
+        let week_limit_dt = (week_start + Duration::days(7))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+
+        let query_start_dt = week_start.min(today).and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let query_end_dt = (week_start + Duration::days(7))
             .max(today + Duration::days(1))
             .and_hms_opt(0, 0, 0)
             .unwrap()
@@ -910,7 +916,7 @@ impl Repository for Database {
         )?;
 
         let rows = stmt.query_map(
-            params![format_dt(&week_start_dt), format_dt(&week_end_dt)],
+            params![format_dt(&query_start_dt), format_dt(&query_end_dt)],
             |row| {
                 let start_str: String = row.get(0)?;
                 let end_str: String = row.get(1)?;
@@ -920,7 +926,7 @@ impl Repository for Database {
 
         let mut completed_today = 0u32;
         let mut completed_this_week = 0u32;
-        let mut total_focus_mins = 0i64;
+        let mut total_duration = Duration::zero();
 
         for r in rows {
             let (start_str, end_str) = r?;
@@ -928,8 +934,11 @@ impl Repository for Database {
             let end_time = parse_dt(&end_str)?;
 
             let duration = (end_time - start_time).max(Duration::zero());
-            completed_this_week += 1;
-            total_focus_mins += duration.num_minutes();
+
+            if start_time >= week_start_dt && start_time < week_limit_dt {
+                completed_this_week += 1;
+                total_duration += duration;
+            }
 
             if start_time >= today_start_dt && start_time < today_end_dt {
                 completed_today += 1;
@@ -939,7 +948,7 @@ impl Repository for Database {
         Ok(PomodoroStats {
             completed_today,
             completed_this_week,
-            total_focus_mins,
+            total_focus_mins: total_duration.num_minutes(),
         })
     }
 }
