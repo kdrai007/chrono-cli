@@ -185,14 +185,24 @@ impl App {
             return;
         }
 
+        if self.show_help {
+            match key.code {
+                KeyCode::Esc
+                | KeyCode::Char('?')
+                | KeyCode::Char('q')
+                | KeyCode::Enter
+                | KeyCode::Char(' ') => {
+                    self.show_help = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Char('q') => self.quit(),
             KeyCode::Char('?') => self.toggle_help(),
-            KeyCode::Esc => {
-                if self.show_help {
-                    self.show_help = false;
-                }
-            }
+            KeyCode::Esc => {}
             KeyCode::Char('1') => self.set_tab(Tab::Timer),
             KeyCode::Char('2') => self.set_tab(Tab::History),
             KeyCode::Char('3') => self.set_tab(Tab::Projects),

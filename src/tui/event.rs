@@ -38,17 +38,18 @@ impl EventHandler {
             .spawn(move || loop {
                 match event::poll(tick_rate) {
                     Ok(true) => match event::read() {
-                        Ok(CrosstermEvent::Key(key))
-                            if (key.kind == KeyEventKind::Press
-                                || key.kind == KeyEventKind::Repeat)
-                                && event_sender.send(Event::Key(key)).is_err() =>
-                        {
-                            break;
+                        Ok(CrosstermEvent::Key(key)) => {
+                            if (key.kind == KeyEventKind::Press || key.kind == KeyEventKind::Repeat)
+                                && event_sender.send(Event::Key(key)).is_err()
+                            {
+                                break;
+                            }
                         }
-                        Ok(CrosstermEvent::Resize(w, h))
-                            if event_sender.send(Event::Resize(w, h)).is_err() =>
-                        {
-                            break;
+                        Ok(CrosstermEvent::Resize(w, h)) => {
+                            let send_result = event_sender.send(Event::Resize(w, h));
+                            if send_result.is_err() {
+                                break;
+                            }
                         }
                         _ => {}
                     },

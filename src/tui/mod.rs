@@ -6,7 +6,7 @@ pub mod ui;
 
 use std::io::{self, Stdout};
 
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::cursor::Show;
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -22,30 +22,40 @@ use crate::config::AppConfig;
 use crate::storage::Database;
 
 /// Initializes the terminal by entering raw mode, switching to the alternate screen,
-/// enabling mouse capture, and setting up a panic hook to safely restore the terminal.
+/// and setting up a panic hook to safely restore the terminal.
 pub fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>, io::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    if let Err(e) = execute!(stdout, EnterAlternateScreen) {
+        let _ = disable_raw_mode();
+        return Err(e);
+    }
 
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
         original_hook(panic_info);
     }));
 
     let backend = CrosstermBackend::new(stdout);
-    Terminal::new(backend)
+    match Terminal::new(backend) {
+        Ok(t) => Ok(t),
+        Err(e) => {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+            Err(e)
+        }
+    }
 }
 
 /// Restores the terminal by disabling raw mode, leaving alternate screen,
-/// disabling mouse capture, and showing the cursor.
+/// and showing the cursor.
 pub fn restore_terminal(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), io::Error> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(io::stdout(), LeaveAlternateScreen, Show)?;
     terminal.show_cursor()?;
     Ok(())
 }

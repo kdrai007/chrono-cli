@@ -47,7 +47,7 @@ fn format_status_badge(app: &App) -> (String, Style) {
             EntryMode::PomodoroWork | EntryMode::PomodoroBreak => {
                 let remaining = app.pomodoro.time_remaining(entry.start_time, now);
                 let badge = format!(
-                    "[POMODORO: {} ({} remaining)]",
+                    "[POMO: {} ({} left)]",
                     app.pomodoro.current_phase(),
                     format_duration_hms(&remaining)
                 );
@@ -93,12 +93,13 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let date_len = if inner.width < 85 { 0 } else { 20 };
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(18), // App title
-            Constraint::Min(20),    // Global status badge
-            Constraint::Length(22), // Current date/time
+            Constraint::Length(16),       // App title
+            Constraint::Min(20),          // Global status badge
+            Constraint::Length(date_len), // Current date/time
         ])
         .split(inner);
 
@@ -117,11 +118,13 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         Paragraph::new(Span::styled(status_text, status_style)).alignment(Alignment::Center);
     frame.render_widget(status_p, cols[1]);
 
-    // Right: Date
-    let date_str = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-    let date_p = Paragraph::new(Span::styled(date_str, Style::default().fg(Color::Gray)))
-        .alignment(Alignment::Right);
-    frame.render_widget(date_p, cols[2]);
+    // Right: Date (if room available)
+    if date_len > 0 {
+        let date_str = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+        let date_p = Paragraph::new(Span::styled(date_str, Style::default().fg(Color::Gray)))
+            .alignment(Alignment::Right);
+        frame.render_widget(date_p, cols[2]);
+    }
 }
 
 /// Renders the primary navigation tab bar.
@@ -352,9 +355,15 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let mut spans = Vec::new();
 
     if let Some((msg, _)) = &app.status_message {
+        let max_msg_len = if inner.width < 90 { 20 } else { 40 };
+        let display_msg = if msg.len() > max_msg_len {
+            format!("{}...", &msg[..max_msg_len.saturating_sub(3)])
+        } else {
+            msg.clone()
+        };
         spans.push(Span::styled("🔔 ", Style::default().fg(Color::Yellow)));
         spans.push(Span::styled(
-            msg.clone(),
+            display_msg,
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
@@ -363,8 +372,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     let hints = [
-        ("[Space]", " Start/Stop  "),
-        ("[p]", " Pomodoro  "),
+        ("[Space]", " Timer  "),
+        ("[p]", " Pomo  "),
         ("[1-4]", " Tabs  "),
         ("[s]", " Sync  "),
         ("[?]", " Help  "),
@@ -408,93 +417,104 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 
 /// Renders the centered modal help reference sheet.
 fn render_help_modal(frame: &mut Frame) {
-    let popup_area = centered_rect(65, 75, frame.area());
+    let popup_area = centered_rect(80, 70, frame.area());
     frame.render_widget(Clear, popup_area);
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
         .title(Span::styled(
-            " ⌨  Keyboard Shortcuts Reference (Press [?] or [Esc] to Close) ",
+            " ⌨  Shortcuts Reference (Press [?] to Close) ",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ));
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
 
-    let text = vec![
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Navigation:",
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner);
+
+    let left_text = vec![
+        Line::from(Span::styled(
+            "Navigation",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
-        )]),
+        )),
         Line::from(vec![
-            Span::styled("  [1]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Switch to Timer view"),
+            Span::styled(" [1]–[4]   ", Style::default().fg(Color::Yellow)),
+            Span::raw("Switch tabs"),
         ]),
         Line::from(vec![
-            Span::styled("  [2]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Switch to History view"),
+            Span::styled(" [Tab]     ", Style::default().fg(Color::Yellow)),
+            Span::raw("Next tab"),
         ]),
         Line::from(vec![
-            Span::styled("  [3]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Switch to Projects & Courses view"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [4]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Switch to Analytics & Streaks view"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [Tab]         ", Style::default().fg(Color::Yellow)),
-            Span::raw("Cycle to next tab"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [Shift+Tab]   ", Style::default().fg(Color::Yellow)),
-            Span::raw("Cycle to previous tab"),
+            Span::styled(" [S-Tab]   ", Style::default().fg(Color::Yellow)),
+            Span::raw("Previous tab"),
         ]),
         Line::from(""),
-        Line::from(vec![Span::styled(
-            "Timer Controls:",
+        Line::from(Span::styled(
+            "General",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
-        )]),
+        )),
         Line::from(vec![
-            Span::styled("  [Space]       ", Style::default().fg(Color::Yellow)),
-            Span::raw("Start / Stop active timer session"),
+            Span::styled(" [?] / Esc ", Style::default().fg(Color::Yellow)),
+            Span::raw("Toggle / Close help"),
         ]),
         Line::from(vec![
-            Span::styled("  [p]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Start / Advance Pomodoro session"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [s]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Trigger manual Clockify cloud sync"),
-        ]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "General:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )]),
-        Line::from(vec![
-            Span::styled("  [?]           ", Style::default().fg(Color::Yellow)),
-            Span::raw("Toggle this help popup"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [Esc]         ", Style::default().fg(Color::Yellow)),
-            Span::raw("Close modal dialogs"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [q] / [Ctrl+c]", Style::default().fg(Color::Yellow)),
-            Span::raw("Quit Clockify TUI"),
+            Span::styled(" [q]       ", Style::default().fg(Color::Yellow)),
+            Span::raw("Quit application"),
         ]),
     ];
 
-    let paragraph = Paragraph::new(text).block(block);
-    frame.render_widget(paragraph, popup_area);
+    let right_text = vec![
+        Line::from(Span::styled(
+            "Timer & Actions",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled(" [Space]   ", Style::default().fg(Color::Yellow)),
+            Span::raw("Start / Stop timer"),
+        ]),
+        Line::from(vec![
+            Span::styled(" [p]       ", Style::default().fg(Color::Yellow)),
+            Span::raw("Pomodoro phase"),
+        ]),
+        Line::from(vec![
+            Span::styled(" [s]       ", Style::default().fg(Color::Yellow)),
+            Span::raw("Clockify cloud sync"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Lists & CRUD",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled(" [j] / [k] ", Style::default().fg(Color::Yellow)),
+            Span::raw("Navigate lists"),
+        ]),
+        Line::from(vec![
+            Span::styled(" [n] / [e] ", Style::default().fg(Color::Yellow)),
+            Span::raw("New / Edit entry"),
+        ]),
+        Line::from(vec![
+            Span::styled(" [d]       ", Style::default().fg(Color::Yellow)),
+            Span::raw("Delete item"),
+        ]),
+    ];
+
+    frame.render_widget(Paragraph::new(left_text), cols[0]);
+    frame.render_widget(Paragraph::new(right_text), cols[1]);
 }
 
 #[cfg(test)]

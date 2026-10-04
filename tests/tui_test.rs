@@ -87,6 +87,41 @@ fn test_tui_render_all_views_and_help_modal() {
 }
 
 #[test]
+fn test_tui_render_standard_80x24_dimensions() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    let mut app = App::new(AppConfig::default());
+    terminal.draw(|f| render(&app, f)).unwrap();
+
+    let content: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    assert!(content.contains("Clockify TUI"));
+    assert!(content.contains("Timer"));
+    assert!(content.contains("History"));
+    assert!(content.contains("IDLE"));
+
+    // Test help modal on 80x24
+    app.toggle_help();
+    assert!(app.show_help);
+    terminal.draw(|f| render(&app, f)).unwrap();
+
+    // Verify 'q' in modal closes modal instead of quitting app
+    app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+    assert!(!app.show_help);
+    assert!(
+        app.running,
+        "App should still be running after closing modal with 'q'"
+    );
+}
+
+#[test]
 fn test_tui_event_loop_step() {
     let mut app = App::new(AppConfig::default());
 
