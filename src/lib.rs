@@ -1,5 +1,8 @@
 //! Clockify TUI library.
 
+pub mod config;
+pub use config::AppConfig;
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("Hello from clockify-tui!");
     Ok(())
