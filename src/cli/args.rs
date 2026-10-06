@@ -27,6 +27,61 @@ impl std::fmt::Display for ExportFormat {
     }
 }
 
+/// Subcommands for Omarchy Quickshell status bar integration.
+#[derive(Debug, Clone, Subcommand, PartialEq, Eq)]
+pub enum OmarchyCommands {
+    /// Return current timer status, totals, and projects in Omarchy format
+    Status {
+        /// Also return the complete projects list
+        #[arg(long)]
+        projects: bool,
+    },
+    /// Stop whatever is running and start a new timer
+    Start {
+        /// Optional task description
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Associated project id or name
+        #[arg(short, long)]
+        project: Option<String>,
+        /// Mark as billable
+        #[arg(short, long)]
+        billable: bool,
+    },
+    /// Continue the last stopped task or a specified task
+    Continue {
+        /// Task description (default: last stopped task)
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Project id (default: last stopped task project)
+        #[arg(short, long)]
+        project: Option<String>,
+        /// Mark as billable
+        #[arg(short, long)]
+        billable: bool,
+    },
+    /// Stop the currently running timer
+    Stop,
+    /// Discard the currently running timer without saving
+    Discard,
+    /// Update stored Omarchy preferences
+    SetConfig {
+        /// Remembered default project id
+        #[arg(long)]
+        project: Option<String>,
+        /// Workspace id
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Week start day ("monday" or "sunday")
+        #[arg(long)]
+        week_start: Option<String>,
+    },
+    /// Read an API key from stdin and store it
+    SetKey,
+    /// Forget the stored API key
+    ClearKey,
+}
+
 /// Available CLI subcommands.
 #[derive(Debug, Clone, Subcommand, PartialEq, Eq)]
 pub enum Commands {
@@ -56,6 +111,10 @@ pub enum Commands {
         /// Output status formatted as JSON for Waybar
         #[arg(long)]
         json: bool,
+
+        /// Output status formatted as JSON for Omarchy Quickshell status bar
+        #[arg(long)]
+        omarchy: bool,
     },
 
     /// Export recorded time entries to CSV or JSON
@@ -71,6 +130,13 @@ pub enum Commands {
 
     /// Synchronize time entries with Clockify cloud
     Sync,
+
+    /// Omarchy Quickshell status bar backend bridge
+    #[command(alias = "bar", alias = "quickshell")]
+    Omarchy {
+        #[command(subcommand)]
+        command: OmarchyCommands,
+    },
 }
 
 /// Command line interface for chrono-cli.

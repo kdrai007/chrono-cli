@@ -409,13 +409,26 @@ pub fn render_entry_form_modal(app: &App, frame: &mut Frame, is_new: bool) {
         "Edit Time Entry"
     };
 
-    let modal = Modal::new(title)
-        .width_percent(70)
-        .height_percent(65)
-        .border_color(Color::Cyan)
-        .with_hotkey("[Tab/↓]", "Next")
-        .with_hotkey("[Enter]", "Save")
-        .with_hotkey("[Esc]", "Cancel");
+    let form = &app.entry_form;
+
+    let modal = if form.active_field == 1 {
+        Modal::new(title)
+            .width_percent(70)
+            .height_percent(65)
+            .border_color(Color::Cyan)
+            .with_hotkey("[↑/↓]", "Pick Previous")
+            .with_hotkey("[Ctrl+F]", "FZF Search")
+            .with_hotkey("[Enter]", "Select")
+            .with_hotkey("[Tab]", "Next")
+    } else {
+        Modal::new(title)
+            .width_percent(70)
+            .height_percent(65)
+            .border_color(Color::Cyan)
+            .with_hotkey("[Tab/↓]", "Next")
+            .with_hotkey("[Enter]", "Save")
+            .with_hotkey("[Esc]", "Cancel")
+    };
 
     let inner = modal.render_frame(frame);
     if inner.width == 0 || inner.height == 0 {
@@ -432,8 +445,6 @@ pub fn render_entry_form_modal(app: &App, frame: &mut Frame, is_new: bool) {
             Constraint::Min(1),    // Formatting hint
         ])
         .split(inner);
-
-    let form = &app.entry_form;
 
     // Field 0: Description
     render_input_field(
@@ -475,12 +486,282 @@ pub fn render_entry_form_modal(app: &App, frame: &mut Frame, is_new: bool) {
         "e.g. homework, exam-prep",
     );
 
+    // When Field 1 (Project) is focused, render the floating previous projects dropdown over fields[2..3]
+    if form.active_field == 1 && !form.show_fzf_modal {
+        let matches = app.fuzzy_filter_projects(&form.project);
+        let dropdown_y = fields[1].y + fields[1].height;
+        let max_h = (inner.y + inner.height).saturating_sub(dropdown_y);
+        if max_h >= 3 {
+            let dropdown_h = max_h.min(7).max(3);
+            let dropdown_area = Rect {
+                x: fields[1].x,
+                y: dropdown_y,
+                width: fields[1].width,
+                height: dropdown_h,
+            };
+            frame.render_widget(Clear, dropdown_area);
+
+            let dd_block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .title(Span::styled(
+                    " Previous Projects (FZF: type to filter · ↑/↓ pick · Enter apply · Ctrl+F search) ",
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ));
+            let dd_inner = dd_block.inner(dropdown_area);
+            frame.render_widget(dd_block, dropdown_area);
+
+            let visible_count = dd_inner.height as usize;
+            let selected = form.selected_project_option.min(matches.len().saturating_sub(1));
+            let scroll_top = if selected >= visible_count {
+                selected + 1 - visible_count
+            } else {
+                0
+            };
+
+            let mut lines = Vec::new();
+            if matches.is_empty() {
+                if form.project.trim().is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        "  No previous projects found. Type a new name to create one.",
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "  [New Project] ",
+                            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("Press Tab to create and use \"{}\"", form.project),
+                            Style::default().fg(Color::White),
+                        ),
+                    ]));
+                }
+            } else {
+                for (i, (proj, fuzzy_match)) in matches
+                    .iter()
+                    .enumerate()
+                    .skip(scroll_top)
+                    .take(visible_count)
+                {
+                    let is_sel = i == selected;
+                    let prefix = if is_sel { "> " } else { "  " };
+                    let p_color = parse_hex_color(&proj.color);
+
+                    let mut line_spans = vec![
+                        Span::styled(
+                            prefix,
+                            if is_sel {
+                                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(Color::DarkGray)
+                            },
+                        ),
+                        Span::styled("● ", Style::default().fg(p_color)),
+                    ];
+
+                    for (c_idx, c) in proj.name.chars().enumerate() {
+                        if fuzzy_match.matched_indices.contains(&c_idx) {
+                            line_spans.push(Span::styled(
+                                c.to_string(),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                            ));
+                        } else {
+                            line_spans.push(Span::styled(
+                                c.to_string(),
+                                if is_sel {
+                                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().fg(Color::Gray)
+                                },
+                            ));
+                        }
+                    }
+
+                    let meta = if proj.target_hours_week > 0.0 {
+                        format!("  ({:.1}h/wk · {}x)", proj.target_hours_week, proj.usage_count)
+                    } else if proj.usage_count > 0 {
+                        format!("  ({}x used)", proj.usage_count)
+                    } else {
+                        String::new()
+                    };
+                    if !meta.is_empty() {
+                        line_spans.push(Span::styled(meta, Style::default().fg(Color::DarkGray)));
+                    }
+
+                    let mut line = Line::from(line_spans);
+                    if is_sel {
+                        line = line.style(Style::default().bg(Color::Rgb(30, 45, 65)));
+                    }
+                    lines.push(line);
+                }
+            }
+
+            frame.render_widget(Paragraph::new(lines), dd_inner);
+        }
+    }
+
     // Bottom helper note
-    let hint_text = Paragraph::new(
-        "💡 Enter duration as '1h 30m' or time range as '14:00 - 15:30'. New projects/tags are created automatically.",
-    )
-    .style(Style::default().fg(Color::DarkGray));
+    let hint_text = if form.active_field == 1 {
+        Paragraph::new(
+            "💡 [↑/↓] Select from previous projects · [Ctrl+F] Full FZF modal · [Enter] Apply project · [Tab] Next field",
+        )
+        .style(Style::default().fg(Color::Cyan))
+    } else {
+        Paragraph::new(
+            "💡 Enter duration as '1h 30m' or time range as '14:00 - 15:30'. New projects/tags are created automatically.",
+        )
+        .style(Style::default().fg(Color::DarkGray))
+    };
     frame.render_widget(hint_text, fields[4]);
+
+    // Dedicated FZF Modal on top
+    if form.show_fzf_modal {
+        render_project_fzf_modal(app, frame);
+    }
+}
+
+/// Renders the dedicated FZF fuzzy finder modal for picking from previous projects.
+pub fn render_project_fzf_modal(app: &App, frame: &mut Frame) {
+    let area = centered_rect(65, 55, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(Span::styled(
+            " 🔍 Select Previous Project (FZF) ",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Search input
+            Constraint::Min(3),    // Matches list
+            Constraint::Length(1), // Footer hotkeys
+        ])
+        .split(inner);
+
+    // Search input
+    let query = &app.entry_form.fzf_query;
+    let search_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(" Search / Filter ", Style::default().fg(Color::Cyan)));
+    let search_inner = search_block.inner(chunks[0]);
+    frame.render_widget(search_block, chunks[0]);
+
+    let search_line = Line::from(vec![
+        Span::styled("> ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(query, Style::default().fg(Color::White)),
+        Span::styled("▌", Style::default().fg(Color::Yellow)),
+    ]);
+    frame.render_widget(Paragraph::new(search_line), search_inner);
+
+    // Filtered matches
+    let matches = app.fuzzy_filter_projects(query);
+    let list_inner = chunks[1];
+    let visible_count = list_inner.height as usize;
+    let selected = app.entry_form.fzf_selected_index.min(matches.len().saturating_sub(1));
+    let scroll_top = if selected >= visible_count {
+        selected + 1 - visible_count
+    } else {
+        0
+    };
+
+    let mut lines = Vec::new();
+    if matches.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  No matching previous projects found. Press Enter to use \"",
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(query, Style::default().fg(Color::White)),
+            Span::styled("\".", Style::default().fg(Color::DarkGray)),
+        ]));
+    } else {
+        for (i, (proj, fuzzy_match)) in matches
+            .iter()
+            .enumerate()
+            .skip(scroll_top)
+            .take(visible_count)
+        {
+            let is_sel = i == selected;
+            let prefix = if is_sel { "> " } else { "  " };
+            let p_color = parse_hex_color(&proj.color);
+
+            let mut line_spans = vec![
+                Span::styled(
+                    prefix,
+                    if is_sel {
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::DarkGray)
+                    },
+                ),
+                Span::styled("● ", Style::default().fg(p_color)),
+            ];
+
+            for (c_idx, c) in proj.name.chars().enumerate() {
+                if fuzzy_match.matched_indices.contains(&c_idx) {
+                    line_spans.push(Span::styled(
+                        c.to_string(),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                    ));
+                } else {
+                    line_spans.push(Span::styled(
+                        c.to_string(),
+                        if is_sel {
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        },
+                    ));
+                }
+            }
+
+            let meta = if proj.target_hours_week > 0.0 {
+                format!("  ({:.1}h/wk · {}x)", proj.target_hours_week, proj.usage_count)
+            } else {
+                format!("  ({}x used)", proj.usage_count)
+            };
+            line_spans.push(Span::styled(meta, Style::default().fg(Color::DarkGray)));
+
+            let mut line = Line::from(line_spans);
+            if is_sel {
+                line = line.style(Style::default().bg(Color::Rgb(30, 45, 65)));
+            }
+            lines.push(line);
+        }
+    }
+
+    frame.render_widget(Paragraph::new(lines), list_inner);
+
+    // Footer hotkeys
+    let footer_text = Line::from(vec![
+        Span::styled("[Enter]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(" Select  ", Style::default().fg(Color::Gray)),
+        Span::styled(
+            "[↑/↓ / Ctrl+j/k]",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Navigate  ", Style::default().fg(Color::Gray)),
+        Span::styled("[Esc]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(" Cancel", Style::default().fg(Color::Gray)),
+    ]);
+    frame.render_widget(Paragraph::new(footer_text), chunks[2]);
 }
 
 /// Renders a single input field with title and cursor.

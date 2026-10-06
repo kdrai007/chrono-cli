@@ -189,8 +189,17 @@ pub fn parse_duration_input(s: &str) -> chrono::Duration {
     chrono::Duration::minutes(30)
 }
 
+/// Previous project option with metadata for fuzzy search and selection.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectSuggestion {
+    pub name: String,
+    pub color: String,
+    pub target_hours_week: f64,
+    pub usage_count: usize,
+}
+
 /// Form state for creating or editing time entries via modal dialogs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EntryForm {
     /// Local database ID if editing an existing entry.
     pub id: Option<i64>,
@@ -204,6 +213,14 @@ pub struct EntryForm {
     pub tags: String,
     /// Currently focused form field (0 = description, 1 = project, 2 = duration, 3 = tags).
     pub active_field: usize,
+    /// Selected index in project suggestions list (for navigation via Up/Down/Ctrl+J/Ctrl+K).
+    pub selected_project_option: usize,
+    /// Whether the dedicated FZF fuzzy finder modal overlay is open.
+    pub show_fzf_modal: bool,
+    /// Search query string in the FZF modal.
+    pub fzf_query: String,
+    /// Selected index inside the FZF modal.
+    pub fzf_selected_index: usize,
 }
 
 impl Default for EntryForm {
@@ -215,6 +232,10 @@ impl Default for EntryForm {
             duration: "30m".to_string(),
             tags: String::new(),
             active_field: 0,
+            selected_project_option: 0,
+            show_fzf_modal: false,
+            fzf_query: String::new(),
+            fzf_selected_index: 0,
         }
     }
 }
@@ -248,7 +269,19 @@ impl EntryForm {
             duration: duration_str,
             tags: tags_str,
             active_field: 0,
+            selected_project_option: 0,
+            show_fzf_modal: false,
+            fzf_query: String::new(),
+            fzf_selected_index: 0,
         }
+    }
+
+    /// Resets project selection indices and FZF state.
+    pub fn reset_project_selection(&mut self) {
+        self.selected_project_option = 0;
+        self.show_fzf_modal = false;
+        self.fzf_query.clear();
+        self.fzf_selected_index = 0;
     }
 
     /// Returns a mutable reference to the string buffer for the currently focused field.
@@ -898,6 +931,7 @@ impl App {
     pub fn close_modal(&mut self) {
         self.show_new_entry_modal = false;
         self.show_edit_entry_modal = false;
+        self.entry_form.show_fzf_modal = false;
         self.show_delete_entry_modal = false;
         self.show_filter_modal = false;
         self.show_add_project_modal = false;
@@ -910,11 +944,87 @@ impl App {
         self.show_help
             || self.show_new_entry_modal
             || self.show_edit_entry_modal
+            || self.entry_form.show_fzf_modal
             || self.show_delete_entry_modal
             || self.show_filter_modal
             || self.show_add_project_modal
             || self.show_edit_project_modal
             || self.show_delete_project_modal
+    }
+
+    /// Returns a deduplicated, ranked list of previous projects from configured courses and history.
+    pub fn get_previous_projects(&self) -> Vec<ProjectSuggestion> {
+        let mut map: HashMap<String, ProjectSuggestion> = HashMap::new();
+        let mut usage_counts: HashMap<String, usize> = HashMap::new();
+
+        // 1. Count usage from historical entries
+        for entry in &self.history_entries {
+            if let Some(pid) = entry.project_id {
+                if let Some(p) = self.projects.get(&pid) {
+                    *usage_counts.entry(p.name.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+
+        // 2. Add all configured projects in project_list
+        for p in &self.project_list {
+            let count = usage_counts.get(&p.name).copied().unwrap_or(0);
+            map.insert(
+                p.name.clone(),
+                ProjectSuggestion {
+                    name: p.name.clone(),
+                    color: p.color.clone(),
+                    target_hours_week: p.target_hours_week,
+                    usage_count: count,
+                },
+            );
+        }
+
+        // 3. Add projects from self.projects map not in project_list
+        for p in self.projects.values() {
+            if !map.contains_key(&p.name) {
+                let count = usage_counts.get(&p.name).copied().unwrap_or(0);
+                map.insert(
+                    p.name.clone(),
+                    ProjectSuggestion {
+                        name: p.name.clone(),
+                        color: p.color.clone(),
+                        target_hours_week: p.target_hours_week,
+                        usage_count: count,
+                    },
+                );
+            }
+        }
+
+        let mut list: Vec<ProjectSuggestion> = map.into_values().collect();
+        // Sort: highest usage count first, then by target hours descending, then alphabetically
+        list.sort_by(|a, b| {
+            b.usage_count
+                .cmp(&a.usage_count)
+                .then_with(|| {
+                    b.target_hours_week
+                        .partial_cmp(&a.target_hours_week)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        list
+    }
+
+    /// Fuzzy filters previous projects by `query` using fzf subsequence matching.
+    pub fn fuzzy_filter_projects(
+        &self,
+        query: &str,
+    ) -> Vec<(ProjectSuggestion, crate::tui::fuzzy::FuzzyMatch)> {
+        let all = self.get_previous_projects();
+        let mut matches = Vec::new();
+        for proj in all {
+            if let Some(m) = crate::tui::fuzzy::fuzzy_match(query, &proj.name) {
+                matches.push((proj, m));
+            }
+        }
+        matches.sort_by(|a, b| b.1.score.cmp(&a.1.score));
+        matches
     }
 
     /// Saves the project form (creating a new project or updating an existing one) into SQLite.
@@ -1408,11 +1518,104 @@ impl App {
         }
 
         if self.show_new_entry_modal || self.show_edit_entry_modal {
+            // Sub-case A: Dedicated FZF Fuzzy Finder Modal is open
+            if self.entry_form.show_fzf_modal {
+                let matches = self.fuzzy_filter_projects(&self.entry_form.fzf_query);
+                match key.code {
+                    KeyCode::Esc => {
+                        self.entry_form.show_fzf_modal = false;
+                    }
+                    KeyCode::Enter => {
+                        if let Some((proj, _)) = matches.get(self.entry_form.fzf_selected_index) {
+                            self.entry_form.project = proj.name.clone();
+                        } else if !self.entry_form.fzf_query.trim().is_empty() {
+                            self.entry_form.project = self.entry_form.fzf_query.trim().to_string();
+                        }
+                        self.entry_form.show_fzf_modal = false;
+                        self.entry_form.active_field = 2; // Advance to Duration
+                    }
+                    KeyCode::Up | KeyCode::BackTab => {
+                        if self.entry_form.fzf_selected_index > 0 {
+                            self.entry_form.fzf_selected_index -= 1;
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Tab => {
+                        if !matches.is_empty() && self.entry_form.fzf_selected_index + 1 < matches.len() {
+                            self.entry_form.fzf_selected_index += 1;
+                        }
+                    }
+                    KeyCode::Char('k')
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        if self.entry_form.fzf_selected_index > 0 {
+                            self.entry_form.fzf_selected_index -= 1;
+                        }
+                    }
+                    KeyCode::Char('j')
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        if !matches.is_empty() && self.entry_form.fzf_selected_index + 1 < matches.len() {
+                            self.entry_form.fzf_selected_index += 1;
+                        }
+                    }
+                    KeyCode::Char('p')
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        if self.entry_form.fzf_selected_index > 0 {
+                            self.entry_form.fzf_selected_index -= 1;
+                        }
+                    }
+                    KeyCode::Char('n')
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        if !matches.is_empty() && self.entry_form.fzf_selected_index + 1 < matches.len() {
+                            self.entry_form.fzf_selected_index += 1;
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        self.entry_form.fzf_query.pop();
+                        self.entry_form.fzf_selected_index = 0;
+                    }
+                    KeyCode::Char(c) => {
+                        self.entry_form.fzf_query.push(c);
+                        self.entry_form.fzf_selected_index = 0;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            // Sub-case B: Standard Form Modal
             match key.code {
                 KeyCode::Esc => {
                     self.close_modal();
                 }
+                // Ctrl+F or Ctrl+P: Launch FZF Project Picker Modal
+                KeyCode::Char('f')
+                    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    self.entry_form.show_fzf_modal = true;
+                    self.entry_form.fzf_query = self.entry_form.project.clone();
+                    self.entry_form.fzf_selected_index = 0;
+                }
+                KeyCode::Char('p')
+                    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                        && self.entry_form.active_field == 1 =>
+                {
+                    self.entry_form.show_fzf_modal = true;
+                    self.entry_form.fzf_query = self.entry_form.project.clone();
+                    self.entry_form.fzf_selected_index = 0;
+                }
                 KeyCode::Enter => {
+                    // If on Field 1 (Project) and a suggestion is selected, apply it!
+                    if self.entry_form.active_field == 1 {
+                        let matches = self.fuzzy_filter_projects(&self.entry_form.project);
+                        if let Some((proj, _)) = matches.get(self.entry_form.selected_project_option) {
+                            self.entry_form.project = proj.name.clone();
+                            self.entry_form.active_field = 2; // Advance to Duration
+                            return;
+                        }
+                    }
                     if let Some(db_ref) = db {
                         if let Err(e) = self.save_entry_form(db_ref) {
                             self.set_status_message(e);
@@ -1421,17 +1624,71 @@ impl App {
                         self.close_modal();
                     }
                 }
-                KeyCode::Tab | KeyCode::Down => {
+                KeyCode::Tab => {
+                    if self.entry_form.active_field == 1 {
+                        let matches = self.fuzzy_filter_projects(&self.entry_form.project);
+                        if !self.entry_form.project.is_empty() {
+                            if let Some((proj, _)) = matches.get(self.entry_form.selected_project_option) {
+                                self.entry_form.project = proj.name.clone();
+                            }
+                        }
+                    }
                     self.entry_form.active_field = (self.entry_form.active_field + 1) % 4;
                 }
-                KeyCode::BackTab | KeyCode::Up => {
+                KeyCode::BackTab => {
                     self.entry_form.active_field = (self.entry_form.active_field + 3) % 4;
+                }
+                KeyCode::Down => {
+                    if self.entry_form.active_field == 1 {
+                        let matches = self.fuzzy_filter_projects(&self.entry_form.project);
+                        if !matches.is_empty() && self.entry_form.selected_project_option + 1 < matches.len() {
+                            self.entry_form.selected_project_option += 1;
+                        } else if matches.is_empty() {
+                            self.entry_form.active_field = 2;
+                        }
+                    } else {
+                        self.entry_form.active_field = (self.entry_form.active_field + 1) % 4;
+                    }
+                }
+                KeyCode::Up => {
+                    if self.entry_form.active_field == 1 {
+                        if self.entry_form.selected_project_option > 0 {
+                            self.entry_form.selected_project_option -= 1;
+                        } else {
+                            self.entry_form.active_field = 0;
+                        }
+                    } else {
+                        self.entry_form.active_field = (self.entry_form.active_field + 3) % 4;
+                    }
+                }
+                KeyCode::Char('j')
+                    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                        && self.entry_form.active_field == 1 =>
+                {
+                    let matches = self.fuzzy_filter_projects(&self.entry_form.project);
+                    if !matches.is_empty() && self.entry_form.selected_project_option + 1 < matches.len() {
+                        self.entry_form.selected_project_option += 1;
+                    }
+                }
+                KeyCode::Char('k')
+                    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL)
+                        && self.entry_form.active_field == 1 =>
+                {
+                    if self.entry_form.selected_project_option > 0 {
+                        self.entry_form.selected_project_option -= 1;
+                    }
                 }
                 KeyCode::Backspace => {
                     self.entry_form.active_field_mut().pop();
+                    if self.entry_form.active_field == 1 {
+                        self.entry_form.selected_project_option = 0;
+                    }
                 }
                 KeyCode::Char(c) => {
                     self.entry_form.active_field_mut().push(c);
+                    if self.entry_form.active_field == 1 {
+                        self.entry_form.selected_project_option = 0;
+                    }
                 }
                 _ => {}
             }
