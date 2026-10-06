@@ -128,16 +128,20 @@ When idle:
 
 ### Waybar Configuration (`~/.config/waybar/config`)
 
-Add `custom/clockify` to your `modules-left`, `modules-center`, or `modules-right`:
+Add `custom/chrono` to your `modules-left`, `modules-center`, or `modules-right`:
 
 ```json
-"custom/clockify": {
-    "format": "⏱ {}",
+"custom/chrono": {
+    "format": "{icon} {text}",
+    "format-icons": {
+        "running": "⏱",
+        "idle": "󰔛"
+    },
     "return-type": "json",
     "interval": 2,
     "exec": "chrono status --json",
-    "on-click": "chrono stop",
-    "on-click-middle": "chrono start --pomodoro",
+    "on-click": "ghostty -e chrono",
+    "on-click-right": "chrono stop",
     "tooltip": true
 }
 ```
@@ -145,21 +149,18 @@ Add `custom/clockify` to your `modules-left`, `modules-center`, or `modules-righ
 ### Waybar Style (`~/.config/waybar/style.css`)
 
 ```css
-#custom-clockify {
-    padding: 0 10px;
-    border-radius: 6px;
-    background-color: #282c34;
-    color: #abb2bf;
+#custom-chrono {
+    padding: 0 6px;
+    background: transparent;
 }
 
-#custom-clockify.running {
-    background-color: #98c379;
-    color: #1e1e1e;
+#custom-chrono.running {
+    color: #9ccfd8;
     font-weight: bold;
 }
 
-#custom-clockify.idle {
-    color: #5c6370;
+#custom-chrono.idle {
+    color: #6e6a86;
 }
 ```
 
